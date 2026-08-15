@@ -1,8 +1,10 @@
-import { Bell, Plus, Scale, UserRound } from "lucide-react";
+import { Bell, Plus, Save, Scale, UserRound } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
-export function AppTopbar() {
+interface AppTopbarProps { onCreate?: () => void; onSave?: () => void }
+
+export function AppTopbar({ onCreate, onSave }: AppTopbarProps) {
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b bg-card px-5">
       <div className="flex items-center gap-3">
@@ -16,10 +18,11 @@ export function AppTopbar() {
       </div>
 
       <div className="flex items-center gap-2">
-        <Button type="button" size="sm">
+        <Button type="button" size="sm" onClick={onCreate}>
           <Plus data-icon="inline-start" />
           Nova Peça
         </Button>
+        {onSave && <Button type="button" variant="ghost" size="sm" onClick={onSave}><Save />Salvar</Button>}
         <Button type="button" variant="ghost" size="icon-sm" aria-label="Notificações">
           <Bell />
         </Button>

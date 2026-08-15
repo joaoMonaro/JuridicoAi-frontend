@@ -90,7 +90,67 @@
 
   button,
   input,
-  textarea {
+  textarea,
+  select {
     font: inherit;
+  }
+}
+
+@layer components {
+  .legal-editor-content {
+    min-height: 760px;
+    color: #dce4eb;
+    caret-color: #53b9e4;
+  }
+
+  .legal-editor-content > * + * {
+    margin-top: 0.85em;
+  }
+
+  .legal-editor-content p {
+    margin-block: 0.45em;
+  }
+
+  .legal-editor-content h2 {
+    margin-block: 1.5em 0.7em;
+    color: #4fb8df;
+    font-size: 1.2em;
+    font-weight: 700;
+    text-align: center;
+    text-transform: uppercase;
+  }
+
+  .legal-editor-content h3 {
+    margin-block: 1.35em 0.6em;
+    color: #4fb8df;
+    font-size: 1.05em;
+    font-weight: 700;
+  }
+
+  .legal-editor-content ul,
+  .legal-editor-content ol {
+    padding-left: 1.5rem;
+  }
+
+  .legal-editor-content ul { list-style: disc; }
+  .legal-editor-content ol { list-style: decimal; }
+
+  .legal-editor-content blockquote {
+    border-left: 2px solid var(--primary);
+    padding-left: 1rem;
+    color: var(--muted-foreground);
+  }
+
+  .legal-editor-content a {
+    color: #54bde7;
+    text-decoration: underline;
+  }
+
+  .legal-editor-content p.is-editor-empty:first-child::before {
+    float: left;
+    height: 0;
+    color: var(--muted-foreground);
+    content: "Comece a redigir a peça jurídica...";
+    pointer-events: none;
   }
 }
