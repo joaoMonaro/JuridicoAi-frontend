@@ -80,7 +80,7 @@ export function CaseWorkspacePage({ caseId }: Props) {
     catch (e) { setListError(e instanceof Error ? e.message : "Não foi possível excluir a peça."); }
   }
 
-  return <div className="flex h-screen min-h-[680px] flex-col overflow-hidden bg-background text-foreground">
+  return <div className="flex h-screen min-h-[680px] min-w-[1024px] flex-col overflow-hidden bg-background text-foreground">
     <AppTopbar onCreate={() => setCreateOpen(true)} onSave={() => window.dispatchEvent(new Event("peca:save"))} />
     <div className="flex min-h-0 flex-1">
       <AppSidebar onTemplates={() => setTemplatesOpen(true)} />

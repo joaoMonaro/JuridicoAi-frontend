@@ -1,3 +1,5 @@
+import { getAccessToken } from "@/features/auth/auth-session";
+
 const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:5299").replace(/\/$/, "");
 
 export class ApiError extends Error {
@@ -12,11 +14,18 @@ export class ApiError extends Error {
 }
 
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+  const accessToken = getAccessToken();
+
+  if (init?.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  if (accessToken && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${accessToken}`);
+
   let response: Response;
   try {
     response = await fetch(`${API_URL}${path}`, {
       ...init,
-      headers: { "Content-Type": "application/json", ...init?.headers },
+      credentials: init?.credentials ?? "include",
+      headers,
     });
   } catch {
     throw new ApiError("Não foi possível conectar ao servidor.", 0);

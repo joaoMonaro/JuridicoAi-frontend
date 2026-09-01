@@ -9,7 +9,7 @@ type AppLayoutProps = {
 
 export function AppLayout({ children }: AppLayoutProps) {
   return (
-    <div className="flex h-screen min-h-[620px] flex-col overflow-hidden bg-background text-foreground">
+    <div className="flex h-screen min-h-[620px] min-w-[1024px] flex-col overflow-hidden bg-background text-foreground">
       <AppTopbar />
       <div className="flex min-h-0 flex-1">
         <AppSidebar />
