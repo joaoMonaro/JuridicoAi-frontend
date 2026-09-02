@@ -27,7 +27,8 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
       credentials: init?.credentials ?? "include",
       headers,
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") throw error;
     throw new ApiError("Não foi possível conectar ao servidor.", 0);
   }
 

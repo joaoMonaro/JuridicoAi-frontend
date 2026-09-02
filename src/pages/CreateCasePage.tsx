@@ -5,7 +5,7 @@ import { AppLayout } from "@/layouts/app-layout";
 
 export function CreateCasePage() {
   return (
-    <AppLayout>
+    <AppLayout sidebarActive="casos">
       <div className="mx-auto w-full max-w-4xl px-8 py-7">
         <nav aria-label="Breadcrumb" className="mb-5 flex items-center gap-1.5 text-xs text-muted-foreground">
           <span>Peças</span>

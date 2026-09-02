@@ -3,11 +3,13 @@ export interface CreateCaseInput {
   descricao: string;
 }
 
+export type CaseStatus = "Ativo" | "Arquivado";
+
 export interface Case {
   id: string;
   titulo: string;
   descricao: string | null;
-  status: "Ativo" | "Arquivado";
+  status: CaseStatus;
   dataCriacao: string;
   dataAtualizacao: string;
 }

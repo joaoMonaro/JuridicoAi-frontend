@@ -39,10 +39,12 @@ export function AppTopbar({ onCreate, onSave }: AppTopbarProps) {
       </div>
 
       <div className="flex items-center gap-2">
-        <Button type="button" size="sm" onClick={onCreate}>
-          <Plus data-icon="inline-start" />
-          Nova Peça
-        </Button>
+        {onCreate && (
+          <Button type="button" size="sm" onClick={onCreate}>
+            <Plus data-icon="inline-start" />
+            Nova Peça
+          </Button>
+        )}
         {onSave && <Button type="button" variant="ghost" size="sm" onClick={onSave}><Save />Salvar</Button>}
         <Button type="button" variant="ghost" size="icon-sm" aria-label="Notificações">
           <Bell />
