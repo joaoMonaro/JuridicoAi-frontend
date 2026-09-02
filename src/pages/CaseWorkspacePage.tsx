@@ -81,7 +81,12 @@ export function CaseWorkspacePage({ caseId }: Props) {
   }
 
   return <div className="flex h-screen min-h-[680px] min-w-[1024px] flex-col overflow-hidden bg-background text-foreground">
-    <AppTopbar onCreate={() => setCreateOpen(true)} onSave={() => window.dispatchEvent(new Event("peca:save"))} />
+    <AppTopbar
+      showCaseNavigation
+      caseTitle={caso?.titulo}
+      onCreate={() => setCreateOpen(true)}
+      onSave={() => window.dispatchEvent(new Event("peca:save"))}
+    />
     <div className="flex min-h-0 flex-1">
       <AppSidebar onTemplates={() => setTemplatesOpen(true)} />
       <PecaExplorer casoTitulo={caso?.titulo || "Caso"} items={items} selectedId={selectedId} loading={loadingList} error={listError} onSelect={setSelectedId} onCreate={() => setCreateOpen(true)} onDelete={(item) => void remove(item)} />

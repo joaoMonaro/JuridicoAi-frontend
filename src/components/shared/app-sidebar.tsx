@@ -1,5 +1,4 @@
 import {
-  BriefcaseBusiness,
   FileStack,
   FolderClosed,
   Gavel,
@@ -14,7 +13,6 @@ import { cn } from "@/lib/utils";
 
 const navigation = [
   { id: "pecas", label: "Peças", icon: FileStack },
-  { id: "casos", label: "Casos", icon: BriefcaseBusiness, href: "/casos" },
   { id: "jurisprudencia", label: "Jurisprudência", icon: Scale },
   { id: "modelos", label: "Modelos", icon: LayoutTemplate },
   { id: "pastas", label: "Pastas", icon: FolderClosed },
@@ -41,7 +39,7 @@ export function AppSidebar({ active = "pecas", onTemplates }: AppSidebarProps) {
 
           if ("href" in item) {
             return (
-              <a key={item.id} href={item.href} className={className} aria-current={isActive ? "page" : undefined}>
+              <a key={item.id} className={className} aria-current={isActive ? "page" : undefined}>
                 <Icon className="size-4" aria-hidden="true" />
                 {item.label}
               </a>

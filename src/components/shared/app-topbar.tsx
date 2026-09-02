@@ -1,4 +1,4 @@
-import { Bell, Building2, LoaderCircle, LogOut, Plus, Save, Scale, UserRound } from "lucide-react";
+import { Bell, Building2, ChevronLeft, LoaderCircle, LogOut, Plus, Save, Scale, UserRound } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
 import { useState } from "react";
 
@@ -6,9 +6,14 @@ import { Button } from "@/components/ui/button";
 import { logout } from "@/features/auth/api/logout";
 import { clearAuthSession, getAuthSession } from "@/features/auth/auth-session";
 
-interface AppTopbarProps { onCreate?: () => void; onSave?: () => void }
+interface AppTopbarProps {
+  onCreate?: () => void;
+  onSave?: () => void;
+  showCaseNavigation?: boolean;
+  caseTitle?: string;
+}
 
-export function AppTopbar({ onCreate, onSave }: AppTopbarProps) {
+export function AppTopbar({ onCreate, onSave, showCaseNavigation = false, caseTitle }: AppTopbarProps) {
   const [loggingOut, setLoggingOut] = useState(false);
   const session = getAuthSession();
 
@@ -28,17 +33,39 @@ export function AppTopbar({ onCreate, onSave }: AppTopbarProps) {
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b bg-card px-5">
-      <div className="flex items-center gap-3">
-        <div className="grid size-8 place-items-center rounded-md bg-primary text-primary-foreground">
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="grid size-8 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground">
           <Scale className="size-4" aria-hidden="true" />
         </div>
-        <div className="leading-tight">
+        <div className="shrink-0 leading-tight">
           <p className="text-sm font-semibold tracking-tight">JurídicoAI</p>
           <p className="text-[11px] text-muted-foreground">Copilot Jurídico</p>
         </div>
+
+        {showCaseNavigation && (
+          <div className="ml-2 flex min-w-0 items-center gap-3 border-l pl-4">
+            <Button
+              asChild
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              className="shrink-0 rounded-full bg-secondary"
+            >
+              <a href="/casos" aria-label="Voltar para a lista de casos" title="Voltar para casos">
+                <ChevronLeft className="size-4" aria-hidden="true" />
+              </a>
+            </Button>
+            <div className="min-w-0 leading-tight">
+              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Trabalhando em</p>
+              <p className="max-w-72 truncate text-sm font-medium" title={caseTitle}>
+                {caseTitle || "Carregando caso..."}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         {onCreate && (
           <Button type="button" size="sm" onClick={onCreate}>
             <Plus data-icon="inline-start" />

@@ -35,7 +35,7 @@ function loginErrorMessage(error: unknown) {
 
 function destinationAfterLogin() {
   const redirect = new URLSearchParams(window.location.search).get("redirect");
-  return redirect?.startsWith("/") && !redirect.startsWith("//") ? redirect : "/casos/novo";
+  return redirect?.startsWith("/") && !redirect.startsWith("//") ? redirect : "/casos";
 }
 
 export function LoginForm() {
