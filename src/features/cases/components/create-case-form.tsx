@@ -2,6 +2,7 @@ import { CircleAlert, LoaderCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
 
+import { navigate } from "@/app/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -50,7 +51,7 @@ export function CreateCaseForm() {
     setSubmitError("");
     try {
       const createdCase = await createCase({ titulo: values.titulo.trim(), descricao: values.descricao.trim() });
-      window.location.assign(`/casos/${createdCase.id}`);
+      navigate(`/casos/${createdCase.id}`);
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Não foi possível criar o caso.");
     } finally {

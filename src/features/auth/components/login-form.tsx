@@ -2,6 +2,7 @@ import { CircleAlert, Eye, EyeOff, LoaderCircle, LockKeyhole, Mail } from "lucid
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
 
+import { navigate } from "@/app/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { login } from "@/features/auth/api/login";
@@ -57,7 +58,7 @@ export function LoginForm() {
     try {
       const response = await login({ email: values.email.trim(), senha: values.senha });
       saveAuthSession(response);
-      window.location.replace(destinationAfterLogin());
+      navigate(destinationAfterLogin(), { replace: true });
     } catch (error) {
       setSubmitError(loginErrorMessage(error));
     } finally {

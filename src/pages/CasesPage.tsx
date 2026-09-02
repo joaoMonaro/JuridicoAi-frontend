@@ -1,6 +1,7 @@
 import { Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
+import { navigate } from "@/app/navigation";
 import { Button } from "@/components/ui/button";
 import { listCases } from "@/features/cases/api/list-cases";
 import { CaseList } from "@/features/cases/components/case-list";
@@ -18,7 +19,7 @@ export function CasesPage() {
     setError("");
     setRequestVersion((current) => current + 1);
   }, []);
-  const createCase = useCallback(() => window.location.assign("/casos/novo"), []);
+  const createCase = useCallback(() => navigate("/casos/novo"), []);
 
   useEffect(() => {
     const controller = new AbortController();

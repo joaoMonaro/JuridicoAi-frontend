@@ -1,3 +1,4 @@
+import { useAppLocation } from "@/app/navigation";
 import { getAuthSession } from "@/features/auth/auth-session";
 import { CreateCasePage } from "@/pages/CreateCasePage";
 import { CasesPage } from "@/pages/CasesPage";
@@ -10,7 +11,9 @@ const CREATE_CASE_PATH = "/casos/novo";
 const CASE_WORKSPACE_PATH = /^\/casos\/([0-9a-f-]{36})$/i;
 
 export function AppRouter() {
-  const currentPath = window.location.pathname;
+  const currentLocation = useAppLocation();
+  const currentUrl = new URL(currentLocation, window.location.origin);
+  const currentPath = currentUrl.pathname;
   const session = getAuthSession();
 
   if (currentPath === LOGIN_PATH) {
@@ -24,7 +27,7 @@ export function AppRouter() {
   const workspaceMatch = currentPath.match(CASE_WORKSPACE_PATH);
 
   if ((currentPath === CASES_PATH || currentPath === CREATE_CASE_PATH || workspaceMatch) && !session) {
-    const redirect = encodeURIComponent(`${currentPath}${window.location.search}`);
+    const redirect = encodeURIComponent(`${currentPath}${currentUrl.search}`);
     window.history.replaceState(null, "", `${LOGIN_PATH}?redirect=${redirect}`);
     return <LoginPage />;
   }

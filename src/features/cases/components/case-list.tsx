@@ -1,6 +1,7 @@
 import { Archive, ArrowRight, BriefcaseBusiness, CircleAlert, Plus, RefreshCw, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { AppLink } from "@/components/shared/app-link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { Case, CaseStatus } from "@/features/cases/types/case";
@@ -114,7 +115,7 @@ export function CaseList({ items, loading, error, onRetry, onCreate }: CaseListP
       {!loading && !error && filtered.length > 0 && (
         <div className="divide-y" role="list">
           {filtered.map((item) => (
-            <a
+            <AppLink
               key={item.id}
               href={`/casos/${item.id}`}
               role="listitem"
@@ -141,7 +142,7 @@ export function CaseList({ items, loading, error, onRetry, onCreate }: CaseListP
               </span>
               <span className="text-xs text-muted-foreground">{formatDate(item.dataAtualizacao)}</span>
               <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" aria-hidden="true" />
-            </a>
+            </AppLink>
           ))}
         </div>
       )}
