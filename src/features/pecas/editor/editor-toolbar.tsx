@@ -1,12 +1,13 @@
-import { Bold, Italic, Link as LinkIcon, List, ListOrdered, Redo2, Strikethrough, Underline as UnderlineIcon, Undo2, AlignLeft, AlignCenter, AlignRight, AlignJustify, Quote } from "lucide-react";
+import { Bold, Italic, Link as LinkIcon, List, ListOrdered, Redo2, Strikethrough, Sun, Underline as UnderlineIcon, Undo2, AlignLeft, AlignCenter, AlignRight, AlignJustify, Quote } from "lucide-react";
 import type { Editor } from "@tiptap/react";
 
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import type { EditorTheme } from "@/features/pecas/editor/editor-theme";
 import { cn } from "@/lib/utils";
 
-interface Props { editor: Editor | null }
-export function EditorToolbar({ editor }: Props) {
+interface Props { editor: Editor | null; theme: EditorTheme; onToggleTheme: () => void }
+export function EditorToolbar({ editor, theme, onToggleTheme }: Props) {
   if (!editor) return <div className="h-11 border-b" />;
   const command = (label: string, active: boolean, icon: typeof Bold, run: () => void, disabled = false) => {
     const Icon = icon;
@@ -29,6 +30,22 @@ export function EditorToolbar({ editor }: Props) {
     {command("Alinhar à direita", editor.isActive({ textAlign: "right" }), AlignRight, () => editor.chain().focus().setTextAlign("right").run())}
     {command("Justificar", editor.isActive({ textAlign: "justify" }), AlignJustify, () => editor.chain().focus().setTextAlign("justify").run())}
     {command("Inserir link", editor.isActive("link"), LinkIcon, () => { const href = window.prompt("Endereço do link"); if (href) editor.chain().focus().extendMarkRange("link").setLink({ href }).run(); })}
-    <span className="ml-auto flex gap-1">{command("Desfazer", false, Undo2, () => editor.chain().focus().undo().run(), !editor.can().undo())}{command("Refazer", false, Redo2, () => editor.chain().focus().redo().run(), !editor.can().redo())}</span>
+    <span className="ml-auto flex items-center gap-1">
+      <Button
+        type="button"
+        size="icon-sm"
+        variant="ghost"
+        title={theme === "light" ? "Usar tema escuro no documento" : "Usar tema claro no documento"}
+        aria-label={theme === "light" ? "Usar tema escuro no documento" : "Usar tema claro no documento"}
+        aria-pressed={theme === "light"}
+        onClick={onToggleTheme}
+        className={cn(theme === "light" && "bg-primary/15 text-primary")}
+      >
+        <Sun />
+      </Button>
+      <Separator orientation="vertical" className="mx-1 h-5" />
+      {command("Desfazer", false, Undo2, () => editor.chain().focus().undo().run(), !editor.can().undo())}
+      {command("Refazer", false, Redo2, () => editor.chain().focus().redo().run(), !editor.can().redo())}
+    </span>
   </div>;
 }

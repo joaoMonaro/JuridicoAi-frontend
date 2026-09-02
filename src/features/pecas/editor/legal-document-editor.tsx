@@ -7,10 +7,13 @@ import { AlertTriangle, Check, CloudOff, LoaderCircle, RefreshCw, Save } from "l
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { getEditorTheme, saveEditorTheme } from "@/features/pecas/editor/editor-theme";
+import type { EditorTheme } from "@/features/pecas/editor/editor-theme";
 import { EditorToolbar } from "@/features/pecas/editor/editor-toolbar";
 import { mmToPx, useDocumentPagination } from "@/features/pecas/editor/use-document-pagination";
 import { usePecaAutosave } from "@/features/pecas/hooks/use-peca-autosave";
 import type { Peca, PecaPatch } from "@/features/pecas/types";
+import { cn } from "@/lib/utils";
 
 interface Props { peca: Peca; onChanged: (peca: Peca) => void; onReload: () => void }
 
@@ -28,6 +31,7 @@ function documentText(json: Peca["headerJson"]) {
 
 export function LegalDocumentEditor({ peca, onChanged, onReload }: Props) {
   const [stats, setStats] = useState({ words: 0, characters: 0 });
+  const [editorTheme, setEditorTheme] = useState<EditorTheme>(getEditorTheme);
   const pecaRef = useRef(peca);
   useEffect(() => { pecaRef.current = peca; }, [peca]);
   const persisted = useCallback((version: number, updatedAt: string, patch: PecaPatch) => onChanged({ ...pecaRef.current, ...patch, versao: version, dataAtualizacao: updatedAt }), [onChanged]);
@@ -71,14 +75,29 @@ export function LegalDocumentEditor({ peca, onChanged, onReload }: Props) {
 
   const status = autosave.state === "SALVANDO" ? <><LoaderCircle className="animate-spin" />Salvando...</> : autosave.state === "SALVO" ? <><Check />Salvo</> : autosave.state === "ERRO" ? <><CloudOff />Erro ao salvar</> : autosave.state === "CONFLITO" ? <><AlertTriangle />Conflito de versão</> : <><span className="size-1.5 rounded-full bg-warning" />Não salvo</>;
 
-  return <section className="flex min-w-0 flex-1 flex-col bg-[#0d141c]">
-    <EditorToolbar editor={editor} />
+  function toggleEditorTheme() {
+    setEditorTheme((current) => {
+      const next = current === "light" ? "dark" : "light";
+      saveEditorTheme(next);
+      return next;
+    });
+  }
+
+  return <section className="flex min-w-0 flex-1 flex-col bg-card">
+    <EditorToolbar editor={editor} theme={editorTheme} onToggleTheme={toggleEditorTheme} />
     {autosave.state === "CONFLITO" && <div className="flex items-center justify-between border-b border-warning/40 bg-warning/10 px-4 py-2 text-xs text-warning"><span>Esta peça foi alterada em outra sessão. Recarregue para evitar sobrescrever a versão mais recente.</span><Button size="sm" variant="outline" onClick={onReload}><RefreshCw />Recarregar versão mais recente</Button></div>}
-    <div className="min-h-0 flex-1 overflow-auto bg-[#0a1118] px-8 py-7">
-      <div className="relative mx-auto border border-[#33404d] bg-[#131d26] shadow-xl" style={pageStyle}>
-        {header && <div className="absolute inset-x-0 top-5 px-12 text-center text-[10px] text-muted-foreground">{header}</div>}
+    <div className={cn("min-h-0 flex-1 overflow-auto px-8 py-7 transition-colors", editorTheme === "light" ? "bg-[#cfd4da]" : "bg-[#0a1118]")}>
+      <div
+        data-editor-theme={editorTheme}
+        className={cn(
+          "legal-editor-page relative mx-auto border shadow-xl transition-colors",
+          editorTheme === "light" ? "border-[#b7bec6] bg-white text-[#20242a]" : "border-[#33404d] bg-[#131d26] text-[#dce4eb]",
+        )}
+        style={pageStyle}
+      >
+        {header && <div className={cn("absolute inset-x-0 top-5 px-12 text-center text-[10px]", editorTheme === "light" ? "text-[#66717d]" : "text-muted-foreground")}>{header}</div>}
         <EditorContent editor={editor} />
-        {footer && <div className="absolute inset-x-0 bottom-5 px-12 text-center text-[10px] text-muted-foreground">{footer}</div>}
+        {footer && <div className={cn("absolute inset-x-0 bottom-5 px-12 text-center text-[10px]", editorTheme === "light" ? "text-[#66717d]" : "text-muted-foreground")}>{footer}</div>}
       </div>
     </div>
     <footer className="flex h-9 items-center border-t bg-card px-3 text-[11px] text-muted-foreground">

@@ -99,6 +99,14 @@
 @layer components {
   .legal-editor-content {
     min-height: 760px;
+  }
+
+  .legal-editor-page[data-editor-theme="light"] .legal-editor-content {
+    color: #20242a;
+    caret-color: #287fa3;
+  }
+
+  .legal-editor-page[data-editor-theme="dark"] .legal-editor-content {
     color: #dce4eb;
     caret-color: #53b9e4;
   }
@@ -113,7 +121,6 @@
 
   .legal-editor-content h2 {
     margin-block: 1.5em 0.7em;
-    color: #4fb8df;
     font-size: 1.2em;
     font-weight: 700;
     text-align: center;
@@ -122,9 +129,18 @@
 
   .legal-editor-content h3 {
     margin-block: 1.35em 0.6em;
-    color: #4fb8df;
     font-size: 1.05em;
     font-weight: 700;
+  }
+
+  .legal-editor-page[data-editor-theme="light"] .legal-editor-content h2,
+  .legal-editor-page[data-editor-theme="light"] .legal-editor-content h3 {
+    color: #244f63;
+  }
+
+  .legal-editor-page[data-editor-theme="dark"] .legal-editor-content h2,
+  .legal-editor-page[data-editor-theme="dark"] .legal-editor-content h3 {
+    color: #4fb8df;
   }
 
   .legal-editor-content ul,
@@ -138,19 +154,40 @@
   .legal-editor-content blockquote {
     border-left: 2px solid var(--primary);
     padding-left: 1rem;
+  }
+
+  .legal-editor-page[data-editor-theme="light"] .legal-editor-content blockquote {
+    color: #596675;
+  }
+
+  .legal-editor-page[data-editor-theme="dark"] .legal-editor-content blockquote {
     color: var(--muted-foreground);
   }
 
   .legal-editor-content a {
-    color: #54bde7;
     text-decoration: underline;
+  }
+
+  .legal-editor-page[data-editor-theme="light"] .legal-editor-content a {
+    color: #156b8d;
+  }
+
+  .legal-editor-page[data-editor-theme="dark"] .legal-editor-content a {
+    color: #54bde7;
   }
 
   .legal-editor-content p.is-editor-empty:first-child::before {
     float: left;
     height: 0;
-    color: var(--muted-foreground);
     content: "Comece a redigir a peça jurídica...";
     pointer-events: none;
+  }
+
+  .legal-editor-page[data-editor-theme="light"] .legal-editor-content p.is-editor-empty:first-child::before {
+    color: #6b7280;
+  }
+
+  .legal-editor-page[data-editor-theme="dark"] .legal-editor-content p.is-editor-empty:first-child::before {
+    color: var(--muted-foreground);
   }
 }
