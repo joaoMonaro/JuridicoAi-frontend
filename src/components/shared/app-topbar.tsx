@@ -34,18 +34,18 @@ export function AppTopbar({ onCreate, onSave, showCaseNavigation = false, caseTi
   }
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b bg-card px-5">
-      <div className="flex min-w-0 items-center gap-3">
+    <header className="flex h-14 shrink-0 items-center justify-between border-b bg-card px-2 sm:px-4 xl:px-5">
+      <div className="flex min-w-0 items-center gap-2 sm:gap-3">
         <div className="grid size-8 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground">
           <Scale className="size-4" aria-hidden="true" />
         </div>
-        <div className="shrink-0 leading-tight">
+        <div className="hidden shrink-0 leading-tight sm:block">
           <p className="text-sm font-semibold tracking-tight">JurídicoAI</p>
           <p className="text-[11px] text-muted-foreground">Copilot Jurídico</p>
         </div>
 
         {showCaseNavigation && (
-          <div className="ml-2 flex min-w-0 items-center gap-3 border-l pl-4">
+          <div className="ml-1 flex min-w-0 items-center gap-2 border-l pl-2 sm:ml-2 sm:gap-3 sm:pl-4">
             <Button
               asChild
               type="button"
@@ -58,8 +58,8 @@ export function AppTopbar({ onCreate, onSave, showCaseNavigation = false, caseTi
               </AppLink>
             </Button>
             <div className="min-w-0 leading-tight">
-              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Trabalhando em</p>
-              <p className="max-w-72 truncate text-sm font-medium" title={caseTitle}>
+              <p className="hidden text-[10px] font-medium uppercase tracking-wider text-muted-foreground lg:block">Trabalhando em</p>
+              <p className="max-w-24 truncate text-sm font-medium sm:max-w-40 lg:max-w-72" title={caseTitle}>
                 {caseTitle || "Carregando caso..."}
               </p>
             </div>
@@ -69,13 +69,13 @@ export function AppTopbar({ onCreate, onSave, showCaseNavigation = false, caseTi
 
       <div className="flex shrink-0 items-center gap-2">
         {onCreate && (
-          <Button type="button" size="sm" onClick={onCreate}>
+          <Button type="button" size="sm" className="px-2 xl:px-3" onClick={onCreate} aria-label="Nova peça" title="Nova peça">
             <Plus data-icon="inline-start" />
-            Nova Peça
+            <span className="hidden xl:inline">Nova Peça</span>
           </Button>
         )}
-        {onSave && <Button type="button" variant="ghost" size="sm" onClick={onSave}><Save />Salvar</Button>}
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="Notificações">
+        {onSave && <Button type="button" variant="ghost" size="sm" className="px-2 xl:px-3" onClick={onSave} aria-label="Salvar peça" title="Salvar peça"><Save /><span className="hidden xl:inline">Salvar</span></Button>}
+        <Button type="button" variant="ghost" size="icon-sm" className="hidden sm:inline-flex" aria-label="Notificações">
           <Bell />
         </Button>
         <DropdownMenu.Root>

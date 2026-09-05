@@ -39,14 +39,14 @@ export function CasesPage() {
 
   return (
     <AppLayout sidebarActive="casos">
-      <div className="mx-auto w-full max-w-6xl px-8 py-7">
-        <header className="mb-6 flex items-start justify-between gap-6">
+      <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-6 sm:py-6 xl:px-8 xl:py-7">
+        <header className="mb-5 flex items-start justify-between gap-4 sm:mb-6 sm:gap-6">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Casos</h1>
             <p className="mt-1.5 text-sm text-muted-foreground">Acompanhe e acesse os casos vinculados ao seu escritório.</p>
           </div>
-          <Button type="button" onClick={createCase}>
-            <Plus data-icon="inline-start" />Novo Caso
+          <Button type="button" className="shrink-0 px-2 sm:px-3" onClick={createCase} aria-label="Novo caso">
+            <Plus data-icon="inline-start" /><span className="hidden sm:inline">Novo Caso</span>
           </Button>
         </header>
 

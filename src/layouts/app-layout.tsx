@@ -11,7 +11,7 @@ type AppLayoutProps = {
 
 export function AppLayout({ children, sidebarActive = "pecas" }: AppLayoutProps) {
   return (
-    <div className="flex h-screen min-h-[620px] min-w-[1024px] flex-col overflow-hidden bg-background text-foreground">
+    <div className="flex h-svh min-h-0 min-w-0 flex-col overflow-hidden bg-background text-foreground">
       <AppTopbar />
       <div className="flex min-h-0 flex-1">
         <AppSidebar active={sidebarActive} />

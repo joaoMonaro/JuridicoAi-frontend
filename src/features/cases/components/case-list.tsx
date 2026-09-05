@@ -29,13 +29,13 @@ function LoadingRows() {
   return (
     <div className="divide-y" aria-label="Carregando casos">
       {Array.from({ length: 5 }, (_, index) => (
-        <div key={index} className="grid grid-cols-[minmax(0,1fr)_9rem_10rem_1.5rem] items-center gap-5 px-5 py-4">
+        <div key={index} className="grid grid-cols-[minmax(0,1fr)_7rem_1.5rem] items-center gap-3 px-4 py-4 sm:px-5 xl:grid-cols-[minmax(0,1fr)_9rem_10rem_1.5rem] xl:gap-5">
           <div className="space-y-2">
             <div className="h-4 w-2/5 animate-pulse rounded bg-muted" />
             <div className="h-3 w-4/5 animate-pulse rounded bg-muted/70" />
           </div>
           <div className="h-6 w-16 animate-pulse rounded-full bg-muted" />
-          <div className="h-3 w-24 animate-pulse rounded bg-muted" />
+          <div className="hidden h-3 w-24 animate-pulse rounded bg-muted xl:block" />
           <div className="size-4 animate-pulse rounded bg-muted" />
         </div>
       ))}
@@ -60,7 +60,7 @@ export function CaseList({ items, loading, error, onRetry, onCreate }: CaseListP
 
   return (
     <section className="overflow-hidden rounded-lg border bg-card shadow-sm" aria-label="Lista de casos">
-      <header className="flex items-center justify-between gap-5 border-b px-5 py-4">
+      <header className="flex flex-col items-stretch justify-between gap-3 border-b px-4 py-4 sm:flex-row sm:items-center sm:gap-5 sm:px-5">
         <div className="relative w-full max-w-sm">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
           <Input
@@ -72,7 +72,7 @@ export function CaseList({ items, loading, error, onRetry, onCreate }: CaseListP
           />
         </div>
 
-        <div className="flex shrink-0 items-center gap-1 rounded-md border bg-background p-1" aria-label="Filtrar casos por status">
+        <div className="flex shrink-0 items-center gap-1 self-start rounded-md border bg-background p-1" aria-label="Filtrar casos por status">
           {filters.map((filter) => (
             <button
               key={filter}
@@ -90,10 +90,10 @@ export function CaseList({ items, loading, error, onRetry, onCreate }: CaseListP
         </div>
       </header>
 
-      <div className="grid grid-cols-[minmax(0,1fr)_9rem_10rem_1.5rem] gap-5 border-b bg-muted/25 px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground" aria-hidden="true">
+      <div className="grid grid-cols-[minmax(0,1fr)_7rem_1.5rem] gap-3 border-b bg-muted/25 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground sm:px-5 xl:grid-cols-[minmax(0,1fr)_9rem_10rem_1.5rem] xl:gap-5" aria-hidden="true">
         <span>Caso</span>
         <span>Status</span>
-        <span>Atualização</span>
+        <span className="hidden xl:block">Atualização</span>
         <span />
       </div>
 
@@ -119,7 +119,7 @@ export function CaseList({ items, loading, error, onRetry, onCreate }: CaseListP
               key={item.id}
               href={`/casos/${item.id}`}
               role="listitem"
-              className="group grid grid-cols-[minmax(0,1fr)_9rem_10rem_1.5rem] items-center gap-5 px-5 py-4 transition-colors hover:bg-accent/60 focus-visible:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              className="group grid grid-cols-[minmax(0,1fr)_7rem_1.5rem] items-center gap-3 px-4 py-4 transition-colors hover:bg-accent/60 focus-visible:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-5 xl:grid-cols-[minmax(0,1fr)_9rem_10rem_1.5rem] xl:gap-5"
             >
               <div className="flex min-w-0 items-center gap-3">
                 <div className="grid size-9 shrink-0 place-items-center rounded-md border bg-background text-muted-foreground transition-colors group-hover:text-primary">
@@ -140,7 +140,7 @@ export function CaseList({ items, loading, error, onRetry, onCreate }: CaseListP
               >
                 {item.status}
               </span>
-              <span className="text-xs text-muted-foreground">{formatDate(item.dataAtualizacao)}</span>
+              <span className="hidden text-xs text-muted-foreground xl:block">{formatDate(item.dataAtualizacao)}</span>
               <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" aria-hidden="true" />
             </AppLink>
           ))}
