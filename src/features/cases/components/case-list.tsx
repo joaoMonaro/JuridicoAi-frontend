@@ -4,10 +4,11 @@ import { useMemo, useState } from "react";
 import { AppLink } from "@/components/shared/app-link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { Case, CaseStatus } from "@/features/cases/types/case";
+import type { CasoStatusEnum } from "@/enums";
+import type { Case } from "@/features/cases/types/case";
 import { cn } from "@/lib/utils";
 
-type StatusFilter = "Todos" | CaseStatus;
+type StatusFilter = "Todos" | CasoStatusEnum;
 
 interface CaseListProps {
   items: Case[];

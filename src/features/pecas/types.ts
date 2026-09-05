@@ -1,6 +1,5 @@
 import type { JSONContent } from "@tiptap/react";
-
-export type PecaStatus = "Rascunho" | "Finalizada";
+import type { PecaStatusEnum } from "@/enums";
 
 export interface PageConfig {
   format: "A4";
@@ -20,7 +19,7 @@ export interface DocumentStyles {
 export interface PecaResumo {
   id: string;
   titulo: string;
-  status: PecaStatus;
+  status: PecaStatusEnum;
   versao: number;
   templateId: string | null;
   dataAtualizacao: string;

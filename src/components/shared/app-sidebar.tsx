@@ -1,4 +1,5 @@
 import {
+  Database,
   FileStack,
   FolderClosed,
   Gavel,
@@ -12,6 +13,7 @@ import {
 import { cn } from "@/lib/utils";
 
 const navigation = [
+  { id: "dados", label: "Dados", icon: Database },
   { id: "pecas", label: "Peças", icon: FileStack },
   { id: "jurisprudencia", label: "Jurisprudência", icon: Scale },
   { id: "modelos", label: "Modelos", icon: LayoutTemplate },
@@ -21,7 +23,7 @@ const navigation = [
   { id: "clientes", label: "Clientes", icon: Users },
 ] as const;
 
-export type AppSidebarSection = "pecas" | "casos" | "modelos";
+export type AppSidebarSection = "dados" | "pecas" | "casos" | "modelos";
 
 interface AppSidebarProps { active?: AppSidebarSection; onTemplates?: () => void }
 

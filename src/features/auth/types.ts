@@ -1,4 +1,4 @@
-export type MembershipRole = "Owner" | "Member";
+import type { MembershipRoleEnum } from "@/enums";
 
 export interface LoginInput {
   email: string;
@@ -21,7 +21,7 @@ export interface AuthResponse {
   expiresIn: number;
   user: AuthUser;
   organization: AuthOrganization;
-  role: MembershipRole;
+  role: MembershipRoleEnum;
 }
 
 export interface AuthSession extends AuthResponse {

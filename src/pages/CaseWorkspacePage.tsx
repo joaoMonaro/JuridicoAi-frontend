@@ -10,7 +10,8 @@ import { excluirPeca, listarPecas, obterPeca } from "@/features/pecas/api";
 import { CreatePecaDialog } from "@/features/pecas/components/create-peca-dialog";
 import { PecaExplorer } from "@/features/pecas/components/peca-explorer";
 import { LegalDocumentEditor } from "@/features/pecas/editor/legal-document-editor";
-import type { Peca, PecaResumo, PecaStatus } from "@/features/pecas/types";
+import type { PecaStatusEnum } from "@/enums";
+import type { Peca, PecaResumo } from "@/features/pecas/types";
 import { TemplateManager } from "@/features/templates/components/template-manager";
 
 type Props = { caseId: string };
@@ -74,7 +75,7 @@ export function CaseWorkspacePage({ caseId }: Props) {
     finally { setLoadingDocument(false); }
   }, [selectedId]);
 
-  function patchMetadata(patch: { titulo?: string; status?: PecaStatus }) {
+  function patchMetadata(patch: { titulo?: string; status?: PecaStatusEnum }) {
     if (!peca) return;
     mergePeca({ ...peca, ...patch });
     window.dispatchEvent(new CustomEvent("peca:patch", { detail: patch }));
@@ -108,7 +109,7 @@ export function CaseWorkspacePage({ caseId }: Props) {
             <span className="min-w-0 truncate font-medium" title={peca.titulo}>{peca.titulo}</span>
             <Button size="icon-sm" variant="ghost" onClick={() => void rename()} aria-label="Renomear peça" title="Renomear peça"><Pencil /></Button>
             <span className="ml-auto hidden shrink-0 text-muted-foreground xl:inline">Versão {peca.versao}</span>
-            <select aria-label="Status da peça" className="h-7 shrink-0 rounded-md border bg-background px-2 text-xs" value={peca.status} onChange={(e) => patchMetadata({ status: e.target.value as PecaStatus })}><option value="Rascunho">Rascunho</option><option value="Finalizada">Finalizada</option></select>
+            <select aria-label="Status da peça" className="h-7 shrink-0 rounded-md border bg-background px-2 text-xs" value={peca.status} onChange={(e) => patchMetadata({ status: e.target.value as PecaStatusEnum })}><option value="Rascunho">Rascunho</option><option value="Finalizada">Finalizada</option></select>
             <Button size="icon-sm" variant="ghost" onClick={() => void remove(peca)} aria-label="Excluir peça" title="Excluir peça"><Trash2 /></Button>
           </> : <span className="text-muted-foreground">Peças</span>}
         </header> : null}
