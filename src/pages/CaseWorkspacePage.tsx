@@ -1,11 +1,13 @@
 import { CircleAlert, FileText, LoaderCircle, PanelLeftOpen, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
+import { navigate } from "@/app/navigation";
 import { AppSidebar } from "@/components/shared/app-sidebar";
 import { AppTopbar } from "@/components/shared/app-topbar";
 import { Button } from "@/components/ui/button";
 import { getCase } from "@/features/cases/api/get-case";
 import type { Case } from "@/features/cases/types/case";
+import { CaseDataPanel } from "@/features/contextos/components/case-data-panel";
 import { excluirPeca, listarPecas, obterPeca } from "@/features/pecas/api";
 import { CreatePecaDialog } from "@/features/pecas/components/create-peca-dialog";
 import { PecaExplorer } from "@/features/pecas/components/peca-explorer";
@@ -14,9 +16,10 @@ import type { PecaStatusEnum } from "@/enums";
 import type { Peca, PecaResumo } from "@/features/pecas/types";
 import { TemplateManager } from "@/features/templates/components/template-manager";
 
-type Props = { caseId: string };
+type WorkspaceSection = "dados" | "pecas";
+type Props = { caseId: string; section?: WorkspaceSection };
 
-export function CaseWorkspacePage({ caseId }: Props) {
+export function CaseWorkspacePage({ caseId, section = "pecas" }: Props) {
   const [caso, setCaso] = useState<Case | null>(null);
   const [items, setItems] = useState<PecaResumo[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -96,27 +99,35 @@ export function CaseWorkspacePage({ caseId }: Props) {
     {!focusMode ? <AppTopbar
       showCaseNavigation
       caseTitle={caso?.titulo}
-      onCreate={() => setCreateOpen(true)}
-      onSave={() => window.dispatchEvent(new Event("peca:save"))}
+      onCreate={section === "pecas" ? () => setCreateOpen(true) : undefined}
+      onSave={section === "pecas" ? () => window.dispatchEvent(new Event("peca:save")) : undefined}
     /> : null}
     <div className="flex min-h-0 flex-1">
-      {!focusMode ? <AppSidebar onTemplates={() => setTemplatesOpen(true)} /> : null}
-      {!focusMode && explorerOpen ? <PecaExplorer casoTitulo={caso?.titulo || "Caso"} items={items} selectedId={selectedId} loading={loadingList} error={listError} onSelect={setSelectedId} onCreate={() => setCreateOpen(true)} onDelete={(item) => void remove(item)} onClose={() => setExplorerOpen(false)} /> : null}
+      {!focusMode ? <AppSidebar
+        active={section}
+        onData={() => navigate(`/casos/${caseId}/dados`)}
+        onPecas={() => navigate(`/casos/${caseId}`)}
+        onTemplates={() => setTemplatesOpen(true)}
+      /> : null}
+      {!focusMode && section === "pecas" && explorerOpen ? <PecaExplorer casoTitulo={caso?.titulo || "Caso"} items={items} selectedId={selectedId} loading={loadingList} error={listError} onSelect={setSelectedId} onCreate={() => setCreateOpen(true)} onDelete={(item) => void remove(item)} onClose={() => setExplorerOpen(false)} /> : null}
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {!focusMode ? <header className="flex h-11 shrink-0 items-center gap-1.5 border-b bg-[#111a23] px-2 text-xs sm:px-3">
-          {!explorerOpen ? <Button size="icon-sm" variant="ghost" onClick={() => setExplorerOpen(true)} aria-label="Exibir explorador" title="Exibir explorador"><PanelLeftOpen /></Button> : null}
-          {peca ? <>
-            <span className="min-w-0 truncate font-medium" title={peca.titulo}>{peca.titulo}</span>
-            <Button size="icon-sm" variant="ghost" onClick={() => void rename()} aria-label="Renomear peça" title="Renomear peça"><Pencil /></Button>
-            <span className="ml-auto hidden shrink-0 text-muted-foreground xl:inline">Versão {peca.versao}</span>
-            <select aria-label="Status da peça" className="h-7 shrink-0 rounded-md border bg-background px-2 text-xs" value={peca.status} onChange={(e) => patchMetadata({ status: e.target.value as PecaStatusEnum })}><option value="Rascunho">Rascunho</option><option value="Finalizada">Finalizada</option></select>
-            <Button size="icon-sm" variant="ghost" onClick={() => void remove(peca)} aria-label="Excluir peça" title="Excluir peça"><Trash2 /></Button>
-          </> : <span className="text-muted-foreground">Peças</span>}
-        </header> : null}
-        {loadingDocument && <div className="grid flex-1 place-items-center text-sm text-muted-foreground"><span className="flex items-center gap-2"><LoaderCircle className="animate-spin" />Carregando documento...</span></div>}
-        {!loadingDocument && documentError && <div className="grid flex-1 place-items-center"><div className="text-center"><CircleAlert className="mx-auto mb-3 text-destructive" /><p className="text-sm text-destructive">{documentError}</p><Button variant="outline" size="sm" className="mt-4" onClick={() => void reload()}><RefreshCw />Tentar novamente</Button></div></div>}
-        {!loadingDocument && !documentError && peca && <LegalDocumentEditor key={peca.id} peca={peca} onChanged={mergePeca} onReload={() => void reload()} focusMode={focusMode} onToggleFocusMode={() => setFocusMode((current) => !current)} />}
-        {!loadingDocument && !documentError && !peca && <div className="grid flex-1 place-items-center"><div className="text-center"><FileText className="mx-auto mb-3 size-9 text-muted-foreground" /><h2 className="text-sm font-medium">Nenhuma peça aberta</h2><p className="mt-1 text-xs text-muted-foreground">Selecione uma peça no explorador ou crie um novo documento.</p><Button size="sm" className="mt-4" onClick={() => setCreateOpen(true)}>Nova Peça</Button></div></div>}
+        {section === "dados" ? <CaseDataPanel casoId={caseId} casoTitulo={caso?.titulo || "este caso"} /> : null}
+        <div className={section === "pecas" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
+          {!focusMode ? <header className="flex h-11 shrink-0 items-center gap-1.5 border-b bg-[#111a23] px-2 text-xs sm:px-3">
+            {!explorerOpen ? <Button size="icon-sm" variant="ghost" onClick={() => setExplorerOpen(true)} aria-label="Exibir explorador" title="Exibir explorador"><PanelLeftOpen /></Button> : null}
+            {peca ? <>
+              <span className="min-w-0 truncate font-medium" title={peca.titulo}>{peca.titulo}</span>
+              <Button size="icon-sm" variant="ghost" onClick={() => void rename()} aria-label="Renomear peça" title="Renomear peça"><Pencil /></Button>
+              <span className="ml-auto hidden shrink-0 text-muted-foreground xl:inline">Versão {peca.versao}</span>
+              <select aria-label="Status da peça" className="h-7 shrink-0 rounded-md border bg-background px-2 text-xs" value={peca.status} onChange={(e) => patchMetadata({ status: e.target.value as PecaStatusEnum })}><option value="Rascunho">Rascunho</option><option value="Finalizada">Finalizada</option></select>
+              <Button size="icon-sm" variant="ghost" onClick={() => void remove(peca)} aria-label="Excluir peça" title="Excluir peça"><Trash2 /></Button>
+            </> : <span className="text-muted-foreground">Peças</span>}
+          </header> : null}
+          {loadingDocument && <div className="grid flex-1 place-items-center text-sm text-muted-foreground"><span className="flex items-center gap-2"><LoaderCircle className="animate-spin" />Carregando documento...</span></div>}
+          {!loadingDocument && documentError && <div className="grid flex-1 place-items-center"><div className="text-center"><CircleAlert className="mx-auto mb-3 text-destructive" /><p className="text-sm text-destructive">{documentError}</p><Button variant="outline" size="sm" className="mt-4" onClick={() => void reload()}><RefreshCw />Tentar novamente</Button></div></div>}
+          {!loadingDocument && !documentError && peca && <LegalDocumentEditor key={peca.id} peca={peca} onChanged={mergePeca} onReload={() => void reload()} focusMode={focusMode} onToggleFocusMode={() => setFocusMode((current) => !current)} />}
+          {!loadingDocument && !documentError && !peca && <div className="grid flex-1 place-items-center"><div className="text-center"><FileText className="mx-auto mb-3 size-9 text-muted-foreground" /><h2 className="text-sm font-medium">Nenhuma peça aberta</h2><p className="mt-1 text-xs text-muted-foreground">Selecione uma peça no explorador ou crie um novo documento.</p><Button size="sm" className="mt-4" onClick={() => setCreateOpen(true)}>Nova Peça</Button></div></div>}
+        </div>
       </main>
     </div>
     <CreatePecaDialog casoId={caseId} open={createOpen} onClose={() => setCreateOpen(false)} onCreated={(created) => { setItems((current) => [{ id: created.id, titulo: created.titulo, status: created.status, versao: created.versao, templateId: created.templateId, dataAtualizacao: created.dataAtualizacao }, ...current]); setSelectedId(created.id); }} />

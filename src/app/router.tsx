@@ -8,7 +8,7 @@ import { LoginPage } from "@/pages/LoginPage";
 const LOGIN_PATH = "/login";
 const CASES_PATH = "/casos";
 const CREATE_CASE_PATH = "/casos/novo";
-const CASE_WORKSPACE_PATH = /^\/casos\/([0-9a-f-]{36})$/i;
+const CASE_WORKSPACE_PATH = /^\/casos\/([0-9a-f-]{36})(?:\/(dados))?$/i;
 
 export function AppRouter() {
   const currentLocation = useAppLocation();
@@ -33,7 +33,7 @@ export function AppRouter() {
   }
 
   if (workspaceMatch) {
-    return <CaseWorkspacePage caseId={workspaceMatch[1]} />;
+    return <CaseWorkspacePage caseId={workspaceMatch[1]} section={workspaceMatch[2] === "dados" ? "dados" : "pecas"} />;
   }
 
   if (currentPath === CASES_PATH) {

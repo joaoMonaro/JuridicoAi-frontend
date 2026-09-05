@@ -25,9 +25,14 @@ const navigation = [
 
 export type AppSidebarSection = "dados" | "pecas" | "casos" | "modelos";
 
-interface AppSidebarProps { active?: AppSidebarSection; onTemplates?: () => void }
+interface AppSidebarProps {
+  active?: AppSidebarSection;
+  onData?: () => void;
+  onPecas?: () => void;
+  onTemplates?: () => void;
+}
 
-export function AppSidebar({ active = "pecas", onTemplates }: AppSidebarProps) {
+export function AppSidebar({ active = "pecas", onData, onPecas, onTemplates }: AppSidebarProps) {
   return (
     <aside className="hidden min-h-0 w-16 shrink-0 flex-col border-r border-sidebar-border bg-sidebar px-2 py-4 md:flex min-[1400px]:w-56 min-[1400px]:px-3" aria-label="Navegação principal">
       <nav className="flex flex-1 flex-col gap-1">
@@ -56,7 +61,7 @@ export function AppSidebar({ active = "pecas", onTemplates }: AppSidebarProps) {
             aria-current={isActive ? "page" : undefined}
             aria-label={item.label}
             title={item.label}
-            onClick={item.id === "modelos" ? onTemplates : undefined}
+            onClick={item.id === "dados" ? onData : item.id === "pecas" ? onPecas : item.id === "modelos" ? onTemplates : undefined}
           >
             <Icon className="size-4" aria-hidden="true" />
             <span className="hidden min-[1400px]:inline">{item.label}</span>
