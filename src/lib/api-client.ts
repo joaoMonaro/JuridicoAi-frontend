@@ -13,7 +13,7 @@ export class ApiError extends Error {
   }
 }
 
-export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
   const accessToken = getAccessToken();
 
@@ -36,6 +36,11 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
     const problem = await response.json().catch(() => null) as { detail?: string; code?: string } | null;
     throw new ApiError(problem?.detail || "Não foi possível concluir a operação.", response.status, problem?.code);
   }
+  return response;
+}
+
+export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await apiFetch(path, init);
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }

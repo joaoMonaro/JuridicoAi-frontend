@@ -5,6 +5,7 @@ import { AlertTriangle, Check, CloudOff, LoaderCircle, RefreshCw, Save } from "l
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { AssistantPanel } from "@/features/ai-assistant/components/assistant-panel";
 import { getEditorTheme, saveEditorTheme } from "@/features/pecas/editor/editor-theme";
 import type { EditorTheme } from "@/features/pecas/editor/editor-theme";
 import { EditorToolbar } from "@/features/pecas/editor/editor-toolbar";
@@ -34,6 +35,8 @@ export function LegalDocumentEditor({ peca, onChanged, onReload, focusMode, onTo
   const [editorTheme, setEditorTheme] = useState<EditorTheme>(getEditorTheme);
   const [zoom, setZoom] = useState<EditorZoom>(getEditorZoom);
   const [fitZoom, setFitZoom] = useState(1);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [editorRevision, setEditorRevision] = useState(0);
   const canvasRef = useRef<HTMLDivElement>(null);
   const pecaRef = useRef(peca);
   useEffect(() => { pecaRef.current = peca; }, [peca]);
@@ -50,6 +53,7 @@ export function LegalDocumentEditor({ peca, onChanged, onReload, focusMode, onTo
     },
     onUpdate: ({ editor: current }) => {
       autosave.contentChanged(current.getJSON());
+      setEditorRevision((revision) => revision + 1);
       const text = current.getText();
       setStats({ characters: text.length, words: text.trim() ? text.trim().split(/\s+/u).length : 0 });
     },
@@ -58,6 +62,7 @@ export function LegalDocumentEditor({ peca, onChanged, onReload, focusMode, onTo
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); void autosave.flush(); }
+      if ((event.ctrlKey || event.metaKey) && event.altKey && event.key.toLowerCase() === "a") { event.preventDefault(); setAssistantOpen((current) => !current); }
     };
     const manualSave = () => void autosave.flush();
     const patch = (event: Event) => autosave.change((event as CustomEvent<PecaPatch>).detail);
@@ -107,21 +112,24 @@ export function LegalDocumentEditor({ peca, onChanged, onReload, focusMode, onTo
   }
 
   return <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-card">
-    <EditorToolbar editor={editor} theme={editorTheme} onToggleTheme={toggleEditorTheme} zoom={zoom} effectiveZoom={effectiveZoom} onZoomChange={changeZoom} focusMode={focusMode} onToggleFocusMode={onToggleFocusMode} />
+    <EditorToolbar editor={editor} theme={editorTheme} onToggleTheme={toggleEditorTheme} zoom={zoom} effectiveZoom={effectiveZoom} onZoomChange={changeZoom} focusMode={focusMode} onToggleFocusMode={onToggleFocusMode} assistantOpen={assistantOpen} onToggleAssistant={() => setAssistantOpen((current) => !current)} />
     {autosave.state === "CONFLITO" && <div className="flex items-center justify-between border-b border-warning/40 bg-warning/10 px-4 py-2 text-xs text-warning"><span>Esta peça foi alterada em outra sessão. Recarregue para evitar sobrescrever a versão mais recente.</span><Button size="sm" variant="outline" onClick={onReload}><RefreshCw />Recarregar versão mais recente</Button></div>}
-    <div ref={canvasRef} className={cn("min-h-0 flex-1 overflow-auto px-4 py-5 transition-colors sm:px-6 sm:py-6 2xl:px-8 2xl:py-7", editorTheme === "light" ? "bg-[#cfd4da]" : "bg-[#0a1118]")}>
-      <div
-        data-editor-theme={editorTheme}
-        className={cn(
-          "legal-editor-page relative mx-auto border shadow-xl transition-colors",
-          editorTheme === "light" ? "border-[#b7bec6] bg-white text-[#20242a]" : "border-[#33404d] bg-[#131d26] text-[#dce4eb]",
-        )}
-        style={{ ...pageStyle, zoom: effectiveZoom }}
-      >
-        {header && <div className={cn("absolute inset-x-0 top-5 px-12 text-center text-[10px]", editorTheme === "light" ? "text-[#66717d]" : "text-muted-foreground")}>{header}</div>}
-        <EditorContent editor={editor} />
-        {footer && <div className={cn("absolute inset-x-0 bottom-5 px-12 text-center text-[10px]", editorTheme === "light" ? "text-[#66717d]" : "text-muted-foreground")}>{footer}</div>}
+    <div className="relative flex min-h-0 flex-1">
+      <div ref={canvasRef} className={cn("min-h-0 min-w-0 flex-1 overflow-auto px-4 py-5 transition-colors sm:px-6 sm:py-6 2xl:px-8 2xl:py-7", editorTheme === "light" ? "bg-[#cfd4da]" : "bg-[#0a1118]")}>
+        <div
+          data-editor-theme={editorTheme}
+          className={cn(
+            "legal-editor-page relative mx-auto border shadow-xl transition-colors",
+            editorTheme === "light" ? "border-[#b7bec6] bg-white text-[#20242a]" : "border-[#33404d] bg-[#131d26] text-[#dce4eb]",
+          )}
+          style={{ ...pageStyle, zoom: effectiveZoom }}
+        >
+          {header && <div className={cn("absolute inset-x-0 top-5 px-12 text-center text-[10px]", editorTheme === "light" ? "text-[#66717d]" : "text-muted-foreground")}>{header}</div>}
+          <EditorContent editor={editor} />
+          {footer && <div className={cn("absolute inset-x-0 bottom-5 px-12 text-center text-[10px]", editorTheme === "light" ? "text-[#66717d]" : "text-muted-foreground")}>{footer}</div>}
+        </div>
       </div>
+      <AssistantPanel open={assistantOpen} editor={editor} peca={peca} editorRevision={editorRevision} saveState={autosave.state} onClose={() => setAssistantOpen(false)} />
     </div>
     <footer className="flex h-9 items-center border-t bg-card px-3 text-xs text-muted-foreground">
       <span>Palavras: {stats.words.toLocaleString("pt-BR")}</span><span className="mx-3">Caracteres: {stats.characters.toLocaleString("pt-BR")}</span><span>{pageCount} {pageCount === 1 ? "página" : "páginas"}</span>
