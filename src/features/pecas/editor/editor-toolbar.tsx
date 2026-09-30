@@ -42,7 +42,7 @@ export function EditorToolbar({ editor, theme, onToggleTheme, zoom, effectiveZoo
         aria-label="Abrir assistente de IA"
         aria-pressed={assistantOpen}
         onClick={onToggleAssistant}
-        className={cn("hidden lg:inline-flex", assistantOpen && "text-primary")}
+        className={cn("hidden lg:inline-flex", assistantOpen && "text-sidebar-primary")}
       >
         <Sparkles />IA
       </Button>
@@ -54,7 +54,7 @@ export function EditorToolbar({ editor, theme, onToggleTheme, zoom, effectiveZoo
         aria-label="Abrir assistente de IA"
         aria-pressed={assistantOpen}
         onClick={onToggleAssistant}
-        className={cn("lg:hidden", assistantOpen && "text-primary")}
+        className={cn("lg:hidden", assistantOpen && "text-sidebar-primary")}
       >
         <Sparkles />
       </Button>

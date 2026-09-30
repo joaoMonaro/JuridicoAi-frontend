@@ -16,7 +16,7 @@ export function PecaExplorer({ casoTitulo, items, selectedId, loading, error, on
 
   const group = (label: string, list: PecaResumo[]) => list.length > 0 && <div className="mt-4">
     <p className="mb-1 flex items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"><ChevronDown className="size-3" />{label}</p>
-    {list.map((item) => <div key={item.id} className={cn("group flex items-center border-l-2 border-transparent", selectedId === item.id && "border-primary bg-primary/10 text-primary")}>
+    {list.map((item) => <div key={item.id} className={cn("group flex items-center border-l-2 border-transparent", selectedId === item.id && "border-sidebar-primary bg-sidebar-primary/10 text-sidebar-primary")}>
       <button className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left text-xs hover:bg-accent" onClick={() => onSelect(item.id)} title={item.titulo}><FileText className="size-3.5 shrink-0" /><span className="truncate">{item.titulo}</span></button>
       <button onClick={() => onDelete(item)} className="mr-1 hidden p-1 text-muted-foreground hover:text-destructive group-hover:block" aria-label={`Excluir ${item.titulo}`}><MoreHorizontal className="size-3.5" /></button>
     </div>)}

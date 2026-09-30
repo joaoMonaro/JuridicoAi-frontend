@@ -51,14 +51,14 @@
   --popover: #19232d;
   --popover-foreground: #e7ecf2;
   --primary: #287fa3;
-  --primary-foreground: #f7fbfd;
+  --primary-foreground: #ffffff;
   --secondary: #19232d;
   --secondary-foreground: #e7ecf2;
   --muted: #19232d;
   --muted-foreground: #94a3b2;
   --accent: #1c2b36;
   --accent-foreground: #e7ecf2;
-  --destructive: #d65c5c;
+  --destructive: #e36b6b;
   --success: #3fa66b;
   --warning: #d5a443;
   --border: #283441;

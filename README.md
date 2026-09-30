@@ -3,22 +3,35 @@
 ## Testes automatizados
 
 Os testes unitários e de componentes usam Vitest, jsdom e React Testing
-Library.
+Library. O fluxo de navegador usa Playwright com uma API fake local e não faz
+chamadas à OpenAI.
 
 ```bash
+# preparação da máquina para os E2E
+npx playwright install chromium
+
 # modo interativo durante o desenvolvimento
 npm test
 
-# execução única, usada pelo CI nesta primeira etapa
+# unitários e componentes
 npm run test:run
 
-# validação atual do CI; será ampliada com os E2E do Playwright
+# somente E2E
+npm run test:e2e
+
+# acessibilidade automatizada
+npm run test:a11y
+
+# suíte completa não interativa: Vitest e Playwright
 npm run test:ci
 ```
 
 O arquivo `src/test/setup.ts` concentra os matchers de DOM e a limpeza após
 cada teste. Novos testes devem consultar elementos por papel, nome acessível ou
-rótulo sempre que existir uma semântica adequada.
+rótulo sempre que existir uma semântica adequada. A suíte de acessibilidade usa
+axe-core no Chromium e reprova violações críticas ou sérias. Falhas E2E
+preservam trace, screenshot e vídeo em `test-results/`, diretório ignorado pelo
+Git.
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
