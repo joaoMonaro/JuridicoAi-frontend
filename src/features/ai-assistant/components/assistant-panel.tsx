@@ -5,7 +5,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { streamAssistantRequest, getAssistantCapabilities } from "@/features/ai-assistant/api";
-import { applySuggestion, captureEditorContext, isSuggestionAnchorValid } from "@/features/ai-assistant/editor";
+import {
+  applySuggestion,
+  canApplySuggestion,
+  captureEditorContext,
+  isSuggestionAnchorValid,
+} from "@/features/ai-assistant/editor";
 import type {
   AssistantCapabilities,
   AssistantCompletedEvent,
@@ -109,10 +114,8 @@ export function AssistantPanel({ open, editor, peca, editorRevision, saveState, 
     () => Boolean(editor && suggestion && isSuggestionAnchorValid(editor, suggestion, editorRevision)),
     [editor, suggestion, editorRevision],
   );
-  const canApply = Boolean(
-    editor && suggestion && suggestion.operacaoSugerida !== "ResponderNoPainel" &&
-    anchorValid && editableText.trim() && saveState !== "CONFLITO" && phase !== "applied",
-  );
+  const canApply = Boolean(editor && suggestion && phase !== "applied" &&
+    canApplySuggestion(editor, suggestion, editableText, editorRevision, saveState));
 
   useEffect(() => {
     if (!open) return;
@@ -231,7 +234,7 @@ export function AssistantPanel({ open, editor, peca, editorRevision, saveState, 
 
   function apply() {
     if (!editor || !suggestion || !canApply) return;
-    if (applySuggestion(editor, suggestion, editableText)) setPhase("applied");
+    if (applySuggestion(editor, suggestion, editableText, editorRevision, saveState)) setPhase("applied");
     else setError("Não foi possível aplicar a sugestão no destino original.");
   }
 
@@ -307,21 +310,24 @@ export function AssistantPanel({ open, editor, peca, editorRevision, saveState, 
         </div>
 
         {error ? <div className="mt-3"><ErrorBox message={error} /></div> : null}
-        {(phase === "sending" || phase === "streaming") ? <div className="mt-4 rounded-md border bg-background/40 p-3" aria-live="polite" aria-busy="true"><div className="flex items-center gap-2 text-xs font-medium"><LoaderCircle className="size-4 animate-spin text-primary" />{phase === "sending" ? "Preparando contexto..." : "A IA está elaborando a resposta..."}</div>{streamedText ? <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{streamedText}</p> : null}</div> : null}
-        {completed && suggestion ? <SuggestionResult
-          completed={completed}
-          editableText={editableText}
-          phase={phase}
-          anchorValid={anchorValid}
-          canApply={canApply}
-          saveState={saveState}
-          onTextChange={setEditableText}
-          onApply={apply}
-          onReject={reject}
-          onRetry={() => void submit()}
-          onCopy={() => void copySuggestion()}
-          onDevelop={developFinding}
-        /> : null}
+        {(phase === "sending" || phase === "streaming") ? <div className="mt-4 rounded-md border bg-background/40 p-3"><div className="flex items-center gap-2 text-xs font-medium" aria-live="polite" aria-busy="true"><LoaderCircle className="size-4 animate-spin text-primary" />{phase === "sending" ? "Preparando contexto..." : "A IA está elaborando a resposta..."}</div>{streamedText ? <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{streamedText}</p> : null}</div> : null}
+        {completed && suggestion ? <>
+          <p role="status" className="sr-only">Resposta da IA concluída.</p>
+          <SuggestionResult
+            completed={completed}
+            editableText={editableText}
+            phase={phase}
+            anchorValid={anchorValid}
+            canApply={canApply}
+            saveState={saveState}
+            onTextChange={setEditableText}
+            onApply={apply}
+            onReject={reject}
+            onRetry={() => void submit()}
+            onCopy={() => void copySuggestion()}
+            onDevelop={developFinding}
+          />
+        </> : null}
       </> : null}
     </div>
   </aside>;
@@ -345,6 +351,10 @@ interface ResultProps {
 function SuggestionResult({ completed, editableText, phase, anchorValid, canApply, saveState, onTextChange, onApply, onReject, onRetry, onCopy, onDevelop }: ResultProps) {
   const { sugestao } = completed;
   const canWrite = sugestao.operacaoSugerida !== "ResponderNoPainel";
+  const saveBlockingMessage = saveState === "SALVO" ? null
+    : saveState === "SALVANDO" ? "Aguarde a sincronização da Peça antes de aplicar a sugestão."
+      : saveState === "CONFLITO" ? "Resolva o conflito da Peça antes de aplicar a sugestão."
+        : "Não foi possível salvar a Peça. Suas alterações continuam neste dispositivo, mas sugestões da IA não podem ser aplicadas até que a sincronização seja restabelecida.";
   return <section className="mt-4 border-t pt-4" aria-labelledby="assistant-result-title">
     <div className="flex items-start gap-2"><span className="grid size-7 shrink-0 place-items-center rounded-md bg-primary/15 text-primary"><WandSparkles className="size-4" /></span><div className="min-w-0"><h3 id="assistant-result-title" className="text-sm font-semibold">{sugestao.titulo || "Sugestão da IA"}</h3><p className="mt-0.5 text-[10px] text-muted-foreground">{operationLabels[sugestao.operacaoSugerida]} · {completed.modelo}</p></div></div>
     {sugestao.resumo ? <p className="mt-3 text-xs leading-5 text-muted-foreground">{sugestao.resumo}</p> : null}
@@ -356,7 +366,7 @@ function SuggestionResult({ completed, editableText, phase, anchorValid, canAppl
     {sugestao.alertas.length ? <div className="mt-3 rounded-md border border-warning/30 bg-warning/10 p-2.5"><h4 className="flex items-center gap-1.5 text-xs font-medium text-warning"><AlertTriangle className="size-3.5" />Verifique antes de usar</h4><ul className="mt-1.5 space-y-1 text-[11px] leading-4 text-muted-foreground">{sugestao.alertas.map((alert, index) => <li key={`${alert.codigo}-${index}`}>• {alert.mensagem}</li>)}</ul></div> : null}
 
     {canWrite && !anchorValid && phase !== "applied" ? <div className="mt-3 flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 p-2.5 text-xs text-warning"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" /><span>O documento mudou desde o envio. A aplicação no destino original foi bloqueada; gere novamente a sugestão.</span></div> : null}
-    {saveState === "CONFLITO" ? <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-2.5 text-xs text-destructive"><CircleAlert className="mt-0.5 size-3.5 shrink-0" />Resolva o conflito da peça antes de aplicar.</div> : null}
+    {canWrite && saveBlockingMessage && phase !== "applied" ? <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-2.5 text-xs text-destructive"><CircleAlert className="mt-0.5 size-3.5 shrink-0" />{saveBlockingMessage}</div> : null}
     {phase === "applied" ? <div className="mt-3 flex items-center gap-2 rounded-md border border-success/30 bg-success/10 p-2.5 text-xs text-success"><Check className="size-3.5" />Sugestão aplicada. Você ainda pode desfazer no editor.</div> : null}
 
     <div className="mt-3 flex flex-wrap gap-1.5">

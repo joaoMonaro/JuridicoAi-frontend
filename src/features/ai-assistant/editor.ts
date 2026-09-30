@@ -6,6 +6,7 @@ import type {
   DocumentContextScope,
   EditorRequestSnapshot,
 } from "@/features/ai-assistant/types";
+import type { SaveState } from "@/features/pecas/types";
 
 export function captureEditorContext(
   editor: Editor,
@@ -102,7 +103,25 @@ export function isSuggestionAnchorValid(
   return ancora.posicao !== null && ancora.posicao >= 0 && ancora.posicao <= editor.state.doc.content.size;
 }
 
-export function applySuggestion(editor: Editor, suggestion: AssistantSuggestion, text: string) {
+export function canApplySuggestion(
+  editor: Editor,
+  suggestion: AssistantSuggestion,
+  text: string,
+  editorRevision: number,
+  saveState: SaveState,
+) {
+  return saveState === "SALVO" && suggestion.operacaoSugerida !== "ResponderNoPainel" &&
+    Boolean(text.trim()) && isSuggestionAnchorValid(editor, suggestion, editorRevision);
+}
+
+export function applySuggestion(
+  editor: Editor,
+  suggestion: AssistantSuggestion,
+  text: string,
+  editorRevision: number,
+  saveState: SaveState,
+) {
+  if (!canApplySuggestion(editor, suggestion, text, editorRevision, saveState)) return false;
   const content = textToTiptap(text);
   if (!content.length) return false;
   const { ancora, operacaoSugerida } = suggestion;
