@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { AssistantPanel } from "@/features/ai-assistant/components/assistant-panel";
+import { isAssistantShortcut } from "@/features/ai-assistant/keyboard";
 import { getEditorTheme, saveEditorTheme } from "@/features/pecas/editor/editor-theme";
 import type { EditorTheme } from "@/features/pecas/editor/editor-theme";
 import { EditorToolbar } from "@/features/pecas/editor/editor-toolbar";
@@ -62,7 +63,7 @@ export function LegalDocumentEditor({ peca, onChanged, onReload, focusMode, onTo
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); void autosave.flush(); }
-      if ((event.ctrlKey || event.metaKey) && event.altKey && event.key.toLowerCase() === "a") { event.preventDefault(); setAssistantOpen((current) => !current); }
+      if (isAssistantShortcut(event)) { event.preventDefault(); setAssistantOpen((current) => !current); }
     };
     const manualSave = () => void autosave.flush();
     const patch = (event: Event) => autosave.change((event as CustomEvent<PecaPatch>).detail);

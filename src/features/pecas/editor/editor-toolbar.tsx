@@ -3,6 +3,7 @@ import type { Editor } from "@tiptap/react";
 
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { assistantShortcutLabel } from "@/features/ai-assistant/keyboard";
 import type { EditorTheme } from "@/features/pecas/editor/editor-theme";
 import type { EditorZoom } from "@/features/pecas/editor/editor-view";
 import { cn } from "@/lib/utils";
@@ -10,6 +11,7 @@ import { cn } from "@/lib/utils";
 interface Props { editor: Editor | null; theme: EditorTheme; onToggleTheme: () => void; zoom: EditorZoom; effectiveZoom: number; onZoomChange: (zoom: EditorZoom) => void; focusMode: boolean; onToggleFocusMode: () => void; assistantOpen: boolean; onToggleAssistant: () => void }
 export function EditorToolbar({ editor, theme, onToggleTheme, zoom, effectiveZoom, onZoomChange, focusMode, onToggleFocusMode, assistantOpen, onToggleAssistant }: Props) {
   if (!editor) return <div className="h-11 border-b" />;
+  const assistantShortcut = assistantShortcutLabel();
   const command = (label: string, active: boolean, icon: typeof Bold, run: () => void, disabled = false) => {
     const Icon = icon;
     return <Button type="button" size="icon-sm" variant="ghost" title={label} aria-label={label} aria-pressed={active} disabled={disabled} onClick={run} className={cn(active && "bg-primary/15 text-primary")}><Icon /></Button>;
@@ -38,7 +40,7 @@ export function EditorToolbar({ editor, theme, onToggleTheme, zoom, effectiveZoo
         type="button"
         size="sm"
         variant={assistantOpen ? "secondary" : "ghost"}
-        title="Abrir assistente de IA (Ctrl+Alt+A)"
+        title={`Abrir assistente de IA (${assistantShortcut})`}
         aria-label="Abrir assistente de IA"
         aria-pressed={assistantOpen}
         onClick={onToggleAssistant}
@@ -50,7 +52,7 @@ export function EditorToolbar({ editor, theme, onToggleTheme, zoom, effectiveZoo
         type="button"
         size="icon-sm"
         variant={assistantOpen ? "secondary" : "ghost"}
-        title="Abrir assistente de IA"
+        title={`Abrir assistente de IA (${assistantShortcut})`}
         aria-label="Abrir assistente de IA"
         aria-pressed={assistantOpen}
         onClick={onToggleAssistant}

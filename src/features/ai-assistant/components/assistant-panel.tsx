@@ -74,6 +74,7 @@ export function AssistantPanel({ open, editor, peca, editorRevision, saveState, 
   const [completed, setCompleted] = useState<AssistantCompletedEvent | null>(null);
   const [editableText, setEditableText] = useState("");
   const [error, setError] = useState("");
+  const instructionRef = useRef<HTMLTextAreaElement>(null);
   const requestController = useRef<AbortController | null>(null);
   const wasOpen = useRef(open);
 
@@ -104,8 +105,18 @@ export function AssistantPanel({ open, editor, peca, editorRevision, saveState, 
   useEffect(() => () => requestController.current?.abort(), []);
 
   useEffect(() => {
-    if (wasOpen.current && !open) requestAnimationFrame(() => editor?.commands.focus());
+    if (!open || !capabilities?.habilitado) return;
+    const frame = requestAnimationFrame(() => instructionRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [capabilities?.habilitado, open]);
+
+  useEffect(() => {
+    let frame: number | undefined;
+    if (wasOpen.current && !open) frame = requestAnimationFrame(() => editor?.commands.focus());
     wasOpen.current = open;
+    return () => {
+      if (frame !== undefined) cancelAnimationFrame(frame);
+    };
   }, [editor, open]);
 
   const busy = phase === "sending" || phase === "streaming";
@@ -293,7 +304,7 @@ export function AssistantPanel({ open, editor, peca, editorRevision, saveState, 
           <label className="text-xs font-medium">Contexto<select className="mt-1 h-8 w-full rounded-md border bg-background px-2 text-xs" value={scope} disabled={busy} onChange={(event) => setScope(event.target.value as DocumentContextScope)}>{Object.entries(scopeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         </div>
 
-        <label className="mt-3 block text-xs font-medium">O que você quer que a IA faça?<Textarea className="mt-1 min-h-28 resize-y" value={instruction} disabled={busy} maxLength={capabilities.limites.instrucaoCaracteres} onChange={(event) => setInstruction(event.target.value)} placeholder="Ex.: crie um tópico sobre tutela de urgência considerando o bloqueio da conta..." /></label>
+        <label className="mt-3 block text-xs font-medium">O que você quer que a IA faça?<Textarea ref={instructionRef} className="mt-1 min-h-28 resize-y" value={instruction} disabled={busy} maxLength={capabilities.limites.instrucaoCaracteres} onChange={(event) => setInstruction(event.target.value)} placeholder="Ex.: crie um tópico sobre tutela de urgência considerando o bloqueio da conta..." /></label>
         <div className="mt-1 text-right text-[10px] text-muted-foreground">{instruction.length}/{capabilities.limites.instrucaoCaracteres}</div>
 
         <details className="mt-3 rounded-md border bg-background/40 p-2.5">
