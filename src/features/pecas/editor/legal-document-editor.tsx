@@ -73,6 +73,16 @@ export function LegalDocumentEditor({ peca, onChanged, onReload, focusMode, onTo
     return () => { window.removeEventListener("keydown", keydown); window.removeEventListener("peca:save", manualSave); window.removeEventListener("peca:patch", patch); };
   }, [autosave]);
 
+  useEffect(() => {
+    if (autosave.state === "SALVO") return;
+    const protectUnsavedChanges = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", protectUnsavedChanges);
+    return () => window.removeEventListener("beforeunload", protectUnsavedChanges);
+  }, [autosave.state]);
+
   const pageCount = useDocumentPagination(editor, peca.pageConfig);
   const header = useMemo(() => documentText(peca.headerJson), [peca.headerJson]);
   const footer = useMemo(() => documentText(peca.footerJson), [peca.footerJson]);

@@ -3,7 +3,8 @@ import { createServer } from "node:http";
 const port = 5299;
 const caseId = "11111111-1111-1111-1111-111111111111";
 const pecaId = "22222222-2222-2222-2222-222222222222";
-let peca = initialPeca();
+const secondPecaId = "22222222-2222-2222-2222-222222222223";
+let pecas = initialPecas();
 let scenario = initialScenario();
 
 const server = createServer(async (request, response) => {
@@ -20,7 +21,7 @@ const server = createServer(async (request, response) => {
     return;
   }
   if (request.method === "POST" && url.pathname === "/__e2e/reset") {
-    peca = initialPeca();
+    pecas = initialPecas();
     scenario = initialScenario();
     sendJson(response, 200, { reset: true });
     return;
@@ -42,10 +43,16 @@ const server = createServer(async (request, response) => {
     return;
   }
   if (request.method === "GET" && url.pathname === `/api/casos/${caseId}/pecas`) {
-    sendJson(response, 200, [toSummary(peca)]);
+    sendJson(response, 200, [...pecas.values()].map(toSummary));
     return;
   }
-  if (request.method === "GET" && url.pathname === `/api/pecas/${pecaId}`) {
+  const pecaRoute = url.pathname.match(/^\/api\/pecas\/([0-9a-f-]+)$/u);
+  if (request.method === "GET" && pecaRoute) {
+    const peca = pecas.get(pecaRoute[1]);
+    if (!peca) {
+      sendJson(response, 404, { detail: "Peça não encontrada." });
+      return;
+    }
     sendJson(response, 200, peca);
     return;
   }
@@ -67,7 +74,8 @@ const server = createServer(async (request, response) => {
     sendJson(response, 200, []);
     return;
   }
-  if (request.method === "POST" && url.pathname === `/api/pecas/${pecaId}/assistente/solicitacoes`) {
+  const assistantRoute = url.pathname.match(/^\/api\/pecas\/([0-9a-f-]+)\/assistente\/solicitacoes$/u);
+  if (request.method === "POST" && assistantRoute && pecas.has(assistantRoute[1])) {
     const input = await readJson(request);
     if (scenario.assistant === "error") {
       sendJson(response, 503, { detail: "O provedor de IA está temporariamente indisponível." });
@@ -76,28 +84,34 @@ const server = createServer(async (request, response) => {
     await sendFragmentedSuggestion(response, input, scenario.assistant === "slow");
     return;
   }
-  if (request.method === "PATCH" && url.pathname === `/api/pecas/${pecaId}`) {
+  if (request.method === "PATCH" && pecaRoute) {
+    const currentPeca = pecas.get(pecaRoute[1]);
+    if (!currentPeca) {
+      sendJson(response, 404, { detail: "Peça não encontrada." });
+      return;
+    }
     const patch = await readJson(request);
     if (scenario.autosave === "error") {
       sendJson(response, 500, { detail: "Falha simulada ao salvar a Peça." });
       return;
     }
-    if (scenario.autosave === "conflict" || patch.versao !== peca.versao) {
+    if (scenario.autosave === "conflict" || patch.versao !== currentPeca.versao) {
       sendJson(response, 409, { detail: "Conflito de versão." });
       return;
     }
-    peca = {
-      ...peca,
+    const updatedPeca = {
+      ...currentPeca,
       ...patch,
-      id: peca.id,
-      casoId: peca.casoId,
-      versao: peca.versao + 1,
+      id: currentPeca.id,
+      casoId: currentPeca.casoId,
+      versao: currentPeca.versao + 1,
       dataAtualizacao: new Date().toISOString(),
     };
+    pecas.set(updatedPeca.id, updatedPeca);
     sendJson(response, 200, {
-      id: peca.id,
-      versao: peca.versao,
-      dataAtualizacao: peca.dataAtualizacao,
+      id: updatedPeca.id,
+      versao: updatedPeca.versao,
+      dataAtualizacao: updatedPeca.dataAtualizacao,
     });
     return;
   }
@@ -111,8 +125,13 @@ server.listen(port, "127.0.0.1", () => {
 
 async function sendFragmentedSuggestion(response, input, slow) {
   const selection = input?.contexto?.documento?.selecao;
+  const cursor = input?.contexto?.documento?.cursor;
   const revision = input?.contexto?.documento?.revisaoEditor ?? 0;
-  const suggestedText = "Trecho jurídico revisado pela IA.";
+  const operation = input?.operacaoPreferida ?? "ResponderNoPainel";
+  const isAnswer = operation === "ResponderNoPainel";
+  const suggestedText = isAnswer
+    ? "A peça apresenta uma fundamentação inicial que deve ser revisada pelo profissional responsável."
+    : "Trecho jurídico revisado pela IA.";
   const started = {
     solicitacaoId: "33333333-3333-3333-3333-333333333333",
     clientRequestId: input?.clientRequestId,
@@ -121,19 +140,21 @@ async function sendFragmentedSuggestion(response, input, slow) {
   const completed = {
     sugestao: {
       id: "55555555-5555-5555-5555-555555555555",
-      modo: "Reescrever",
-      operacaoSugerida: "SubstituirSelecao",
-      titulo: "Trecho revisado",
+      modo: input?.modo ?? "Perguntar",
+      operacaoSugerida: operation,
+      titulo: isAnswer ? "Resposta da IA" : "Trecho revisado",
       texto: suggestedText,
-      resumo: "Reescrita técnica preservando os fatos fornecidos.",
+      resumo: isAnswer
+        ? "Análise limitada ao contexto fornecido."
+        : "Reescrita técnica preservando os fatos fornecidos.",
       alertas: [],
       achados: [],
       ancora: {
-        from: selection?.from ?? null,
-        to: selection?.to ?? null,
-        posicao: null,
+        from: operation === "SubstituirSelecao" || operation === "InserirAposSelecao" ? selection?.from ?? null : null,
+        to: operation === "SubstituirSelecao" || operation === "InserirAposSelecao" ? selection?.to ?? null : null,
+        posicao: operation === "InserirNoCursor" || operation === "CriarSecao" ? cursor?.posicao ?? null : null,
         revisaoEditor: revision,
-        textoOriginal: selection?.textoOriginal ?? null,
+        textoOriginal: operation === "SubstituirSelecao" ? selection?.textoOriginal ?? null : null,
       },
     },
     uso: { entradaTokens: 120, saidaTokens: 30 },
@@ -166,17 +187,24 @@ function event(name, data) {
   return `event: ${name}\r\ndata: ${JSON.stringify(data)}\r\n\r\n`;
 }
 
-function initialPeca() {
+function initialPecas() {
+  return new Map([
+    [pecaId, initialPeca(pecaId, "Petição inicial E2E", "Trecho original.")],
+    [secondPecaId, initialPeca(secondPecaId, "Contestação E2E", "Conteúdo da segunda peça.")],
+  ]);
+}
+
+function initialPeca(id, titulo, texto) {
   return {
-    id: pecaId,
+    id,
     casoId: caseId,
-    titulo: "Petição inicial E2E",
+    titulo,
     status: "Rascunho",
     versao: 1,
     templateId: null,
     conteudoJson: {
       type: "doc",
-      content: [{ type: "paragraph", content: [{ type: "text", text: "Trecho original." }] }],
+      content: [{ type: "paragraph", content: [{ type: "text", text: texto }] }],
     },
     pageConfig: { format: "A4", marginTop: 25, marginBottom: 20, marginLeft: 30, marginRight: 20 },
     headerJson: null,
