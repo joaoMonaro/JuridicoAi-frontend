@@ -60,6 +60,8 @@ export async function consumeAssistantEventStream(
   const reader = body.getReader();
   const parser = new SseParser();
   let terminalReceived = false;
+  let streamRequestId: string | null = null;
+  let lastSequence = 0;
 
   const abortReader = () => {
     void reader.cancel(signal?.reason).catch(() => undefined);
@@ -69,6 +71,19 @@ export async function consumeAssistantEventStream(
   const processEvent = (event: SseEvent) => {
     if (terminalReceived || event.data.trim() === "[DONE]") return;
     if (!isAssistantEvent(event.event)) return;
+
+    const identity = parseEventIdentity(event.id);
+    if (!identity) throw invalidStream(responseStatus);
+    if (streamRequestId === null) {
+      if (event.event !== "solicitacao.iniciada" || identity.sequence !== 1)
+        throw invalidStream(responseStatus);
+      streamRequestId = identity.requestId;
+    } else if (identity.requestId !== streamRequestId) {
+      throw invalidStream(responseStatus);
+    }
+    if (identity.sequence <= lastSequence) return;
+    if (identity.sequence !== lastSequence + 1) throw invalidStream(responseStatus);
+    lastSequence = identity.sequence;
 
     const data = parseJson(event.data, responseStatus);
     if (event.event === "solicitacao.iniciada") {
@@ -161,6 +176,16 @@ function parseEvent(lines: string[]): SseEvent | null {
 function isAssistantEvent(event: string): boolean {
   return event === "solicitacao.iniciada" || event === "conteudo.delta" ||
     event === "solicitacao.concluida" || event === "solicitacao.falhou";
+}
+
+function parseEventIdentity(value: string | null): { requestId: string; sequence: number } | null {
+  if (!value) return null;
+  const separator = value.lastIndexOf(":");
+  if (separator <= 0 || separator === value.length - 1) return null;
+  const requestId = value.slice(0, separator);
+  const sequence = Number(value.slice(separator + 1));
+  if (!Number.isSafeInteger(sequence) || sequence <= 0) return null;
+  return { requestId, sequence };
 }
 
 function parseJson(value: string, responseStatus: number): unknown {

@@ -67,9 +67,9 @@ describe("consumeAssistantEventStream", () => {
       onCompleted: (event) => calls.push(`fim:${event.modelo}`),
     };
     const body = streamOf(
-      sse("solicitacao.iniciada", { solicitacaoId: "sol-1", clientRequestId: "req-1" }) +
-      sse("conteudo.delta", { delta: "Trecho" }) +
-      sse("solicitacao.concluida", completedEvent),
+      sse("solicitacao.iniciada", { solicitacaoId: "sol-1", clientRequestId: "req-1" }, 1) +
+      sse("conteudo.delta", { delta: "Trecho" }, 2) +
+      sse("solicitacao.concluida", completedEvent, 3),
     );
 
     await consumeAssistantEventStream(body, handlers, 200);
@@ -82,7 +82,8 @@ describe("consumeAssistantEventStream", () => {
     const body = streamOf(
       "event: futuro\ndata: isto não é JSON\n\n" +
       "data: [DONE]\n\n" +
-      sse("solicitacao.concluida", completedEvent),
+      sse("solicitacao.iniciada", { solicitacaoId: "sol-1", clientRequestId: "req-1" }, 1) +
+      sse("solicitacao.concluida", completedEvent, 2),
     );
 
     await consumeAssistantEventStream(body, { onCompleted }, 200);
@@ -94,9 +95,10 @@ describe("consumeAssistantEventStream", () => {
     const onCompleted = vi.fn();
     const onDelta = vi.fn();
     const body = streamOf(
-      sse("solicitacao.concluida", completedEvent) +
-      sse("solicitacao.concluida", completedEvent) +
-      sse("conteudo.delta", { delta: "tardio" }),
+      sse("solicitacao.iniciada", { solicitacaoId: "sol-1", clientRequestId: "req-1" }, 1) +
+      sse("solicitacao.concluida", completedEvent, 2) +
+      sse("solicitacao.concluida", completedEvent, 2) +
+      sse("conteudo.delta", { delta: "tardio" }, 3),
     );
 
     await consumeAssistantEventStream(body, { onCompleted, onDelta }, 200);
@@ -105,13 +107,62 @@ describe("consumeAssistantEventStream", () => {
     expect(onDelta).not.toHaveBeenCalled();
   });
 
+  it("ignora delta duplicado pela sequência e preserva texto igual em sequências distintas", async () => {
+    const onDelta = vi.fn();
+    const body = streamOf(
+      sse("solicitacao.iniciada", { solicitacaoId: "sol-1", clientRequestId: "req-1" }, 1) +
+      sse("conteudo.delta", { delta: "não " }, 2) +
+      sse("conteudo.delta", { delta: "não " }, 2) +
+      sse("conteudo.delta", { delta: "não " }, 3) +
+      sse("solicitacao.concluida", completedEvent, 4),
+    );
+
+    await consumeAssistantEventStream(body, { onDelta, onCompleted: () => undefined }, 200);
+
+    expect(onDelta.mock.calls).toEqual([["não "], ["não "]]);
+  });
+
+  it("ignora evento antigo já superado", async () => {
+    const onDelta = vi.fn();
+    const body = streamOf(
+      sse("solicitacao.iniciada", { solicitacaoId: "sol-1", clientRequestId: "req-1" }, 1) +
+      sse("conteudo.delta", { delta: "primeiro" }, 2) +
+      sse("conteudo.delta", { delta: "antigo" }, 1) +
+      sse("solicitacao.concluida", completedEvent, 3),
+    );
+
+    await consumeAssistantEventStream(body, { onDelta, onCompleted: () => undefined }, 200);
+
+    expect(onDelta).toHaveBeenCalledOnce();
+    expect(onDelta).toHaveBeenCalledWith("primeiro");
+  });
+
+  it("rejeita lacuna de sequência e troca de solicitação", async () => {
+    const gap = streamOf(
+      sse("solicitacao.iniciada", { solicitacaoId: "sol-1", clientRequestId: "req-1" }, 1) +
+      sse("conteudo.delta", { delta: "trecho" }, 3),
+    );
+    const mixedRequest = streamOf(
+      sse("solicitacao.iniciada", { solicitacaoId: "sol-1", clientRequestId: "req-1" }, 1) +
+      sse("conteudo.delta", { delta: "trecho" }, 2, "sol-2"),
+    );
+
+    await expect(consumeAssistantEventStream(gap, emptyHandlers(), 200))
+      .rejects.toMatchObject({ code: "AI_STREAM_INVALID" });
+    await expect(consumeAssistantEventStream(mixedRequest, emptyHandlers(), 200))
+      .rejects.toMatchObject({ code: "AI_STREAM_INVALID" });
+  });
+
   it("transforma o evento de falha em erro tipado", async () => {
-    const body = streamOf(sse("solicitacao.falhou", {
-      code: "AI_PROVIDER_TIMEOUT",
-      message: "A IA demorou mais que o esperado.",
-      retryable: true,
-      requestId: "req-1",
-    }));
+    const body = streamOf(
+      sse("solicitacao.iniciada", { solicitacaoId: "sol-1", clientRequestId: "req-1" }, 1) +
+      sse("solicitacao.falhou", {
+        code: "AI_PROVIDER_TIMEOUT",
+        message: "A IA demorou mais que o esperado.",
+        retryable: true,
+        requestId: "req-1",
+      }, 2),
+    );
 
     const error = await captureError(consumeAssistantEventStream(body, emptyHandlers(), 200));
 
@@ -123,7 +174,21 @@ describe("consumeAssistantEventStream", () => {
   });
 
   it("rejeita JSON inválido com erro de protocolo controlado", async () => {
-    const body = streamOf("event: conteudo.delta\ndata: {invalido}\n\n");
+    const body = streamOf(
+      sse("solicitacao.iniciada", { solicitacaoId: "sol-1", clientRequestId: "req-1" }, 1) +
+      "id: sol-1:2\nevent: conteudo.delta\ndata: {invalido}\n\n",
+    );
+
+    const error = await captureError(consumeAssistantEventStream(body, emptyHandlers(), 200));
+
+    expect(error).toMatchObject({ code: "AI_STREAM_INVALID" });
+  });
+
+  it("rejeita evento do assistente sem identidade SSE", async () => {
+    const body = streamOf(sseWithoutId("solicitacao.iniciada", {
+      solicitacaoId: "sol-1",
+      clientRequestId: "req-1",
+    }));
 
     const error = await captureError(consumeAssistantEventStream(body, emptyHandlers(), 200));
 
@@ -134,7 +199,7 @@ describe("consumeAssistantEventStream", () => {
     const body = streamOf(sse("solicitacao.iniciada", {
       solicitacaoId: "sol-1",
       clientRequestId: "req-1",
-    }));
+    }, 1));
 
     const error = await captureError(consumeAssistantEventStream(body, emptyHandlers(), 200));
 
@@ -176,7 +241,11 @@ describe("consumeAssistantEventStream", () => {
   });
 });
 
-function sse(event: string, data: unknown): string {
+function sse(event: string, data: unknown, sequence: number, requestId = "sol-1"): string {
+  return `id: ${requestId}:${sequence}\nevent: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+}
+
+function sseWithoutId(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 

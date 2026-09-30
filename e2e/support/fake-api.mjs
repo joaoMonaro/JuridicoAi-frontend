@@ -166,11 +166,11 @@ async function sendFragmentedSuggestion(response, input, slow) {
     Connection: "keep-alive",
   });
 
-  await writeFragmented(response, event("solicitacao.iniciada", started));
+  await writeFragmented(response, event("solicitacao.iniciada", started, `${started.solicitacaoId}:1`));
   if (slow) await delay(1_500);
   await writeFragmented(response, [
-    event("conteudo.delta", { delta: suggestedText }),
-    event("solicitacao.concluida", completed),
+    event("conteudo.delta", { delta: suggestedText }, `${started.solicitacaoId}:2`),
+    event("solicitacao.concluida", completed, `${started.solicitacaoId}:3`),
   ].join(""));
   response.end();
 }
@@ -183,8 +183,8 @@ async function writeFragmented(response, payload) {
   }
 }
 
-function event(name, data) {
-  return `event: ${name}\r\ndata: ${JSON.stringify(data)}\r\n\r\n`;
+function event(name, data, id) {
+  return `id: ${id}\r\nevent: ${name}\r\ndata: ${JSON.stringify(data)}\r\n\r\n`;
 }
 
 function initialPecas() {
