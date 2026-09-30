@@ -1,5 +1,25 @@
 # React + TypeScript + Vite
 
+## Testes automatizados
+
+Os testes unitários e de componentes usam Vitest, jsdom e React Testing
+Library.
+
+```bash
+# modo interativo durante o desenvolvimento
+npm test
+
+# execução única, usada pelo CI nesta primeira etapa
+npm run test:run
+
+# validação atual do CI; será ampliada com os E2E do Playwright
+npm run test:ci
+```
+
+O arquivo `src/test/setup.ts` concentra os matchers de DOM e a limpeza após
+cada teste. Novos testes devem consultar elementos por papel, nome acessível ou
+rótulo sempre que existir uma semântica adequada.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:
