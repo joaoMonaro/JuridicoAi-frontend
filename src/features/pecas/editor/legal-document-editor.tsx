@@ -5,8 +5,10 @@ import { AlertTriangle, Check, CloudOff, LoaderCircle, RefreshCw, Save } from "l
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { getAssistantCapabilities } from "@/features/ai-assistant/api";
 import { AssistantPanel } from "@/features/ai-assistant/components/assistant-panel";
 import { isAssistantShortcut } from "@/features/ai-assistant/keyboard";
+import type { AssistantCapabilities } from "@/features/ai-assistant/types";
 import { getEditorTheme, saveEditorTheme } from "@/features/pecas/editor/editor-theme";
 import type { EditorTheme } from "@/features/pecas/editor/editor-theme";
 import { EditorToolbar } from "@/features/pecas/editor/editor-toolbar";
@@ -37,12 +39,43 @@ export function LegalDocumentEditor({ peca, onChanged, onReload, focusMode, onTo
   const [zoom, setZoom] = useState<EditorZoom>(getEditorZoom);
   const [fitZoom, setFitZoom] = useState(1);
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [assistantCapabilities, setAssistantCapabilities] = useState<AssistantCapabilities | null>(null);
   const [editorRevision, setEditorRevision] = useState(0);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const capabilitiesControllerRef = useRef<AbortController | null>(null);
   const pecaRef = useRef(peca);
   useEffect(() => { pecaRef.current = peca; }, [peca]);
   const persisted = useCallback((version: number, updatedAt: string, patch: PecaPatch) => onChanged({ ...pecaRef.current, ...patch, versao: version, dataAtualizacao: updatedAt }), [onChanged]);
   const autosave = usePecaAutosave({ pecaId: peca.id, initialVersion: peca.versao, onPersisted: persisted });
+  const assistantAvailable = assistantCapabilities?.habilitado === true;
+
+  const refreshAssistantCapabilities = useCallback(() => {
+    capabilitiesControllerRef.current?.abort();
+    const controller = new AbortController();
+    capabilitiesControllerRef.current = controller;
+    getAssistantCapabilities(controller.signal)
+      .then((result) => {
+        setAssistantCapabilities(result);
+        if (!result.habilitado) setAssistantOpen(false);
+      })
+      .catch((error) => {
+        if (error instanceof Error && error.name === "AbortError") return;
+        setAssistantCapabilities(null);
+        setAssistantOpen(false);
+      })
+      .finally(() => {
+        if (capabilitiesControllerRef.current === controller) capabilitiesControllerRef.current = null;
+      });
+  }, []);
+
+  useEffect(() => {
+    refreshAssistantCapabilities();
+    window.addEventListener("focus", refreshAssistantCapabilities);
+    return () => {
+      window.removeEventListener("focus", refreshAssistantCapabilities);
+      capabilitiesControllerRef.current?.abort();
+    };
+  }, [refreshAssistantCapabilities]);
 
   const editor = useEditor({
     extensions: [StarterKit.configure({ link: { openOnClick: false, autolink: true } }), TextAlign.configure({ types: ["heading", "paragraph"] })],
@@ -63,7 +96,7 @@ export function LegalDocumentEditor({ peca, onChanged, onReload, focusMode, onTo
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); void autosave.flush(); }
-      if (isAssistantShortcut(event)) { event.preventDefault(); setAssistantOpen((current) => !current); }
+      if (assistantAvailable && isAssistantShortcut(event)) { event.preventDefault(); setAssistantOpen((current) => !current); }
     };
     const manualSave = () => void autosave.flush();
     const patch = (event: Event) => autosave.change((event as CustomEvent<PecaPatch>).detail);
@@ -71,7 +104,7 @@ export function LegalDocumentEditor({ peca, onChanged, onReload, focusMode, onTo
     window.addEventListener("peca:save", manualSave);
     window.addEventListener("peca:patch", patch);
     return () => { window.removeEventListener("keydown", keydown); window.removeEventListener("peca:save", manualSave); window.removeEventListener("peca:patch", patch); };
-  }, [autosave]);
+  }, [assistantAvailable, autosave]);
 
   useEffect(() => {
     if (autosave.state === "SALVO") return;
@@ -123,7 +156,7 @@ export function LegalDocumentEditor({ peca, onChanged, onReload, focusMode, onTo
   }
 
   return <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-card">
-    <EditorToolbar editor={editor} theme={editorTheme} onToggleTheme={toggleEditorTheme} zoom={zoom} effectiveZoom={effectiveZoom} onZoomChange={changeZoom} focusMode={focusMode} onToggleFocusMode={onToggleFocusMode} assistantOpen={assistantOpen} onToggleAssistant={() => setAssistantOpen((current) => !current)} />
+    <EditorToolbar editor={editor} theme={editorTheme} onToggleTheme={toggleEditorTheme} zoom={zoom} effectiveZoom={effectiveZoom} onZoomChange={changeZoom} focusMode={focusMode} onToggleFocusMode={onToggleFocusMode} assistantAvailable={assistantAvailable} assistantOpen={assistantOpen} onToggleAssistant={() => setAssistantOpen((current) => !current)} />
     {autosave.state === "CONFLITO" && <div className="flex items-center justify-between border-b border-warning/40 bg-warning/10 px-4 py-2 text-xs text-warning"><span>Esta peça foi alterada em outra sessão. Recarregue para evitar sobrescrever a versão mais recente.</span><Button size="sm" variant="outline" onClick={onReload}><RefreshCw />Recarregar versão mais recente</Button></div>}
     <div className="relative flex min-h-0 flex-1">
       <div ref={canvasRef} className={cn("min-h-0 min-w-0 flex-1 overflow-auto px-4 py-5 transition-colors sm:px-6 sm:py-6 2xl:px-8 2xl:py-7", editorTheme === "light" ? "bg-[#cfd4da]" : "bg-[#0a1118]")}>
@@ -140,7 +173,16 @@ export function LegalDocumentEditor({ peca, onChanged, onReload, focusMode, onTo
           {footer && <div className={cn("absolute inset-x-0 bottom-5 px-12 text-center text-[10px]", editorTheme === "light" ? "text-[#66717d]" : "text-muted-foreground")}>{footer}</div>}
         </div>
       </div>
-      <AssistantPanel open={assistantOpen} editor={editor} peca={peca} editorRevision={editorRevision} saveState={autosave.state} onClose={() => setAssistantOpen(false)} />
+      {assistantCapabilities ? <AssistantPanel
+        open={assistantOpen && assistantAvailable}
+        capabilities={assistantCapabilities}
+        editor={editor}
+        peca={peca}
+        editorRevision={editorRevision}
+        saveState={autosave.state}
+        onCapabilitiesInvalidated={refreshAssistantCapabilities}
+        onClose={() => setAssistantOpen(false)}
+      /> : null}
     </div>
     <footer className="flex h-9 items-center border-t bg-card px-3 text-xs text-muted-foreground">
       <span>Palavras: {stats.words.toLocaleString("pt-BR")}</span><span className="mx-3">Caracteres: {stats.characters.toLocaleString("pt-BR")}</span><span>{pageCount} {pageCount === 1 ? "página" : "páginas"}</span>

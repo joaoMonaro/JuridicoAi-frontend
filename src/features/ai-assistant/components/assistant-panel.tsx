@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
   confirmAssistantTransparency,
-  getAssistantCapabilities,
   getAssistantTransparency,
   streamAssistantRequest,
 } from "@/features/ai-assistant/api";
@@ -33,10 +32,12 @@ import { ApiError } from "@/lib/api-client";
 
 interface Props {
   open: boolean;
+  capabilities: AssistantCapabilities;
   editor: Editor | null;
   peca: Peca;
   editorRevision: number;
   saveState: SaveState;
+  onCapabilitiesInvalidated: () => void;
   onClose: () => void;
 }
 
@@ -64,9 +65,7 @@ const operationLabels: Record<AssistantOperation, string> = {
   CriarSecao: "Criar seção",
 };
 
-export function AssistantPanel({ open, editor, peca, editorRevision, saveState, onClose }: Props) {
-  const [capabilities, setCapabilities] = useState<AssistantCapabilities | null>(null);
-  const [capabilitiesError, setCapabilitiesError] = useState("");
+export function AssistantPanel({ open, capabilities, editor, peca, editorRevision, saveState, onCapabilitiesInvalidated, onClose }: Props) {
   const [transparency, setTransparency] = useState<AssistantTransparency | null>(null);
   const [transparencyError, setTransparencyError] = useState("");
   const [confirmingTransparency, setConfirmingTransparency] = useState(false);
@@ -88,19 +87,7 @@ export function AssistantPanel({ open, editor, peca, editorRevision, saveState, 
   const wasOpen = useRef(open);
 
   useEffect(() => {
-    if (!open || capabilities || capabilitiesError) return;
-    const controller = new AbortController();
-    getAssistantCapabilities(controller.signal)
-      .then(setCapabilities)
-      .catch((requestError) => {
-        if (requestError instanceof Error && requestError.name === "AbortError") return;
-        setCapabilitiesError(requestError instanceof Error ? requestError.message : "Não foi possível consultar o assistente.");
-      });
-    return () => controller.abort();
-  }, [open, capabilities, capabilitiesError]);
-
-  useEffect(() => {
-    if (!open || !capabilities?.habilitado || transparency || transparencyError) return;
+    if (!open || !capabilities.habilitado || transparency || transparencyError) return;
     const controller = new AbortController();
     getAssistantTransparency(controller.signal)
       .then(setTransparency)
@@ -109,7 +96,7 @@ export function AssistantPanel({ open, editor, peca, editorRevision, saveState, 
         setTransparencyError(requestError instanceof Error ? requestError.message : "Não foi possível consultar o aviso de uso da IA.");
       });
     return () => controller.abort();
-  }, [open, capabilities?.habilitado, transparency, transparencyError]);
+  }, [open, capabilities.habilitado, transparency, transparencyError]);
 
   useEffect(() => {
     if (!open || !transparency?.confirmado || contexts !== null || contextsError) return;
@@ -126,10 +113,17 @@ export function AssistantPanel({ open, editor, peca, editorRevision, saveState, 
   useEffect(() => () => requestController.current?.abort(), []);
 
   useEffect(() => {
-    if (!open || !capabilities?.habilitado || !transparency?.confirmado) return;
+    if (!open || !capabilities.habilitado || !transparency?.confirmado) return;
     const frame = requestAnimationFrame(() => instructionRef.current?.focus());
     return () => cancelAnimationFrame(frame);
-  }, [capabilities?.habilitado, open, transparency?.confirmado]);
+  }, [capabilities.habilitado, open, transparency?.confirmado]);
+
+  useEffect(() => {
+    if (capabilities.modos.includes(mode)) return;
+    // A capacidade pode ser revogada enquanto o painel está aberto.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMode(capabilities.modos[0] ?? "Perguntar");
+  }, [capabilities.modos, mode]);
 
   useEffect(() => {
     let frame: number | undefined;
@@ -181,7 +175,7 @@ export function AssistantPanel({ open, editor, peca, editorRevision, saveState, 
   }
 
   async function submit() {
-    if (!editor || !capabilities?.habilitado || !instruction.trim() || busy) return;
+    if (!editor || !capabilities.habilitado || !capabilities.modos.includes(mode) || !instruction.trim() || busy) return;
     setError("");
     let snapshot: ReturnType<typeof captureEditorContext>;
     try {
@@ -242,6 +236,10 @@ export function AssistantPanel({ open, editor, peca, editorRevision, saveState, 
         if (requestError instanceof ApiError && requestError.code === "AI_TRANSPARENCY_ACK_REQUIRED") {
           setTransparency(null);
           setTransparencyError("");
+        }
+        if (requestError instanceof ApiError &&
+          (requestError.code === "AI_FEATURE_NOT_ENABLED" || requestError.code === "AI_UNAVAILABLE")) {
+          onCapabilitiesInvalidated();
         }
         setError(requestError instanceof ApiError ? requestError.message : "Não foi possível concluir a solicitação.");
         setPhase("error");
@@ -321,7 +319,10 @@ export function AssistantPanel({ open, editor, peca, editorRevision, saveState, 
 
   if (!open) return null;
 
-  const transparencyPending = Boolean(capabilities?.habilitado && transparency && !transparency.confirmado);
+  const transparencyPending = Boolean(capabilities.habilitado && transparency && !transparency.confirmado);
+  const canRewrite = capabilities.modos.includes("Reescrever");
+  const canReview = capabilities.modos.includes("Revisar");
+  const canDraft = capabilities.modos.includes("Redigir");
 
   return <>
   <aside
@@ -337,21 +338,19 @@ export function AssistantPanel({ open, editor, peca, editorRevision, saveState, 
     </header>
 
     <div className="min-h-0 flex-1 overflow-y-auto p-3">
-      {(!capabilities && !capabilitiesError) || (capabilities?.habilitado && !transparency && !transparencyError) ? <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><LoaderCircle className="animate-spin" />Consultando disponibilidade...</div> : null}
-      {capabilitiesError ? <div><ErrorBox message={capabilitiesError} /><Button type="button" size="sm" variant="outline" className="mt-2" onClick={() => setCapabilitiesError("")}><RotateCcw />Tentar novamente</Button></div> : null}
+      {capabilities.habilitado && !transparency && !transparencyError ? <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><LoaderCircle className="animate-spin" />Consultando disponibilidade...</div> : null}
       {transparencyError && !transparency ? <div><ErrorBox message={transparencyError} /><Button type="button" size="sm" variant="outline" className="mt-2" onClick={() => setTransparencyError("")}><RotateCcw />Tentar novamente</Button></div> : null}
-      {capabilities && !capabilities.habilitado ? <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-sm"><div className="flex items-center gap-2 font-medium text-warning"><AlertTriangle className="size-4" />Assistente desabilitado</div><p className="mt-2 text-xs leading-5 text-muted-foreground">Configure o provider, o modelo e a chave no backend para habilitar esta funcionalidade.</p></div> : null}
 
-      {capabilities?.habilitado && transparency?.confirmado ? <>
-        <section aria-labelledby="assistant-actions-title">
+      {capabilities.habilitado && transparency?.confirmado ? <>
+        {canRewrite || canReview || canDraft ? <section aria-labelledby="assistant-actions-title">
           <h3 id="assistant-actions-title" className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Ações rápidas</h3>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            <Button type="button" size="xs" variant="outline" onClick={() => quickAction("Reescrever", "Reescreva o trecho preservando o sentido jurídico e os fatos.", "Selecao")}>Reescrever</Button>
-            <Button type="button" size="xs" variant="outline" onClick={() => quickAction("Reescrever", "Expanda o trecho com maior clareza e fundamentação, sem inventar fatos.", "Selecao")}>Expandir</Button>
-            <Button type="button" size="xs" variant="outline" onClick={() => quickAction("Revisar", "Identifique lacunas, contradições e melhorias possíveis nesta parte da peça.")}>Revisar</Button>
-            <Button type="button" size="xs" variant="outline" onClick={() => quickAction("Redigir", "Redija um novo trecho jurídico conforme o contexto informado.")}>Novo trecho</Button>
+            {canRewrite ? <><Button type="button" size="xs" variant="outline" onClick={() => quickAction("Reescrever", "Reescreva o trecho preservando o sentido jurídico e os fatos.", "Selecao")}>Reescrever</Button>
+            <Button type="button" size="xs" variant="outline" onClick={() => quickAction("Reescrever", "Expanda o trecho com maior clareza e fundamentação, sem inventar fatos.", "Selecao")}>Expandir</Button></> : null}
+            {canReview ? <Button type="button" size="xs" variant="outline" onClick={() => quickAction("Revisar", "Identifique lacunas, contradições e melhorias possíveis nesta parte da peça.")}>Revisar</Button> : null}
+            {canDraft ? <Button type="button" size="xs" variant="outline" onClick={() => quickAction("Redigir", "Redija um novo trecho jurídico conforme o contexto informado.")}>Novo trecho</Button> : null}
           </div>
-        </section>
+        </section> : null}
 
         <div className="mt-4 grid grid-cols-2 gap-2">
           <label className="text-xs font-medium">Modo<select className="mt-1 h-8 w-full rounded-md border bg-background px-2 text-xs" value={mode} disabled={busy} onChange={(event) => changeMode(event.target.value as AssistantMode)}>{capabilities.modos.map((item) => <option key={item} value={item}>{modeLabels[item]}</option>)}</select></label>
@@ -391,6 +390,7 @@ export function AssistantPanel({ open, editor, peca, editorRevision, saveState, 
             onRetry={() => void submit()}
             onCopy={() => void copySuggestion()}
             onDevelop={developFinding}
+            canDevelop={canDraft}
           />
         </> : null}
       </> : null}
@@ -509,9 +509,10 @@ interface ResultProps {
   onRetry: () => void;
   onCopy: () => void;
   onDevelop: (title: string, description: string) => void;
+  canDevelop: boolean;
 }
 
-function SuggestionResult({ completed, editableText, phase, anchorValid, canApply, saveState, onTextChange, onApply, onReject, onRetry, onCopy, onDevelop }: ResultProps) {
+function SuggestionResult({ completed, editableText, phase, anchorValid, canApply, saveState, onTextChange, onApply, onReject, onRetry, onCopy, onDevelop, canDevelop }: ResultProps) {
   const { sugestao } = completed;
   const canWrite = sugestao.operacaoSugerida !== "ResponderNoPainel";
   const saveBlockingMessage = saveState === "SALVO" ? null
@@ -524,7 +525,7 @@ function SuggestionResult({ completed, editableText, phase, anchorValid, canAppl
 
     {sugestao.operacaoSugerida === "SubstituirSelecao" && sugestao.ancora.textoOriginal ? <div className="mt-3 grid gap-2"><div className="rounded-md border border-destructive/25 bg-destructive/5 p-2.5"><p className="text-[10px] font-semibold uppercase tracking-wide text-destructive">Original</p><p className="mt-1 whitespace-pre-wrap text-xs leading-5">{sugestao.ancora.textoOriginal}</p></div><div className="rounded-md border border-success/25 bg-success/5 p-2.5"><p className="text-[10px] font-semibold uppercase tracking-wide text-success">Proposta</p><Textarea aria-label="Texto proposto pela IA" className="mt-1 min-h-32 bg-transparent text-xs leading-5" value={editableText} onChange={(event) => onTextChange(event.target.value)} /></div></div> : editableText || canWrite ? <Textarea aria-label="Texto sugerido" className="mt-3 min-h-40 text-xs leading-5" value={editableText} onChange={(event) => onTextChange(event.target.value)} /> : null}
 
-    {sugestao.achados.length ? <div className="mt-3 space-y-2"><h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Pontos encontrados</h4>{sugestao.achados.map((finding) => <article key={finding.id} className="rounded-md border bg-background/50 p-2.5"><div className="flex items-start justify-between gap-2"><div><span className="text-[10px] font-medium text-primary">{finding.categoria}</span><h5 className="mt-0.5 text-xs font-semibold">{finding.titulo}</h5></div><Button type="button" size="xs" variant="outline" onClick={() => onDevelop(finding.titulo, finding.descricao)}>Desenvolver</Button></div><p className="mt-1 text-xs leading-5 text-muted-foreground">{finding.descricao}</p></article>)}</div> : null}
+    {sugestao.achados.length ? <div className="mt-3 space-y-2"><h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Pontos encontrados</h4>{sugestao.achados.map((finding) => <article key={finding.id} className="rounded-md border bg-background/50 p-2.5"><div className="flex items-start justify-between gap-2"><div><span className="text-[10px] font-medium text-primary">{finding.categoria}</span><h5 className="mt-0.5 text-xs font-semibold">{finding.titulo}</h5></div>{canDevelop ? <Button type="button" size="xs" variant="outline" onClick={() => onDevelop(finding.titulo, finding.descricao)}>Desenvolver</Button> : null}</div><p className="mt-1 text-xs leading-5 text-muted-foreground">{finding.descricao}</p></article>)}</div> : null}
 
     {sugestao.alertas.length ? <div className="mt-3 rounded-md border border-warning/30 bg-warning/10 p-2.5"><h4 className="flex items-center gap-1.5 text-xs font-medium text-warning"><AlertTriangle className="size-3.5" />Verifique antes de usar</h4><ul className="mt-1.5 space-y-1 text-[11px] leading-4 text-muted-foreground">{sugestao.alertas.map((alert, index) => <li key={`${alert.codigo}-${index}`}>• {alert.mensagem}</li>)}</ul></div> : null}
 

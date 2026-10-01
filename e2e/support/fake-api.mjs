@@ -57,17 +57,11 @@ const server = createServer(async (request, response) => {
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/assistente/capacidades") {
-    sendJson(response, 200, {
-      habilitado: true,
-      modos: ["Perguntar", "Redigir", "Reescrever", "Revisar"],
-      limites: {
-        instrucaoCaracteres: 4_000,
-        contextoDocumentoCaracteres: 60_000,
-        contextoAdicionalCaracteres: 8_000,
-      },
-      suportaStreaming: true,
-      suportaHistorico: false,
-    });
+    if (scenario.capabilities === "error") {
+      sendJson(response, 503, { code: "AI_UNAVAILABLE", detail: "O assistente está temporariamente indisponível." });
+      return;
+    }
+    sendJson(response, 200, assistantCapabilities(scenario.capabilities));
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/assistente/transparencia") {
@@ -93,6 +87,14 @@ const server = createServer(async (request, response) => {
   }
   const assistantRoute = url.pathname.match(/^\/api\/pecas\/([0-9a-f-]+)\/assistente\/solicitacoes$/u);
   if (request.method === "POST" && assistantRoute && pecas.has(assistantRoute[1])) {
+    const capabilities = assistantCapabilities(scenario.capabilities);
+    if (!capabilities.habilitado) {
+      sendJson(response, 403, {
+        code: "AI_FEATURE_NOT_ENABLED",
+        detail: "O assistente de IA não está habilitado para esta organização.",
+      });
+      return;
+    }
     if (scenario.transparency !== "acknowledged") {
       sendJson(response, 428, {
         code: "AI_TRANSPARENCY_ACK_REQUIRED",
@@ -101,8 +103,15 @@ const server = createServer(async (request, response) => {
       return;
     }
     const input = await readJson(request);
+    if (!capabilities.modos.includes(input?.modo)) {
+      sendJson(response, 403, {
+        code: "AI_FEATURE_NOT_ENABLED",
+        detail: "Esta operação de IA não está habilitada para a organização.",
+      });
+      return;
+    }
     if (scenario.assistant === "error") {
-      sendJson(response, 503, { detail: "O provedor de IA está temporariamente indisponível." });
+      sendJson(response, 503, { code: "AI_UNAVAILABLE", detail: "O provedor de IA está temporariamente indisponível." });
       return;
     }
     await sendFragmentedSuggestion(response, input, scenario.assistant === "slow");
@@ -243,7 +252,33 @@ function initialScenario() {
   return {
     assistant: "success",
     autosave: "success",
+    capabilities: "all",
     transparency: "acknowledged",
+  };
+}
+
+function assistantCapabilities(profile) {
+  const modes = profile === "disabled" ? []
+    : profile === "chat" ? ["Perguntar"]
+      : profile === "edit" ? ["Perguntar", "Redigir", "Reescrever"]
+        : profile === "review" ? ["Perguntar", "Revisar"]
+          : ["Perguntar", "Redigir", "Reescrever", "Revisar"];
+  const features = profile === "disabled" ? []
+    : profile === "chat" ? ["AI_ASSISTANT"]
+      : profile === "edit" ? ["AI_ASSISTANT", "AI_EDIT"]
+        : profile === "review" ? ["AI_ASSISTANT", "AI_REVIEW"]
+          : ["AI_ASSISTANT", "AI_EDIT", "AI_REVIEW"];
+  return {
+    habilitado: profile !== "disabled",
+    features,
+    modos: modes,
+    limites: {
+      instrucaoCaracteres: 4_000,
+      contextoDocumentoCaracteres: 60_000,
+      contextoAdicionalCaracteres: 8_000,
+    },
+    suportaStreaming: true,
+    suportaHistorico: false,
   };
 }
 

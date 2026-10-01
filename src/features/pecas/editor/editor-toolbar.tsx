@@ -8,8 +8,8 @@ import type { EditorTheme } from "@/features/pecas/editor/editor-theme";
 import type { EditorZoom } from "@/features/pecas/editor/editor-view";
 import { cn } from "@/lib/utils";
 
-interface Props { editor: Editor | null; theme: EditorTheme; onToggleTheme: () => void; zoom: EditorZoom; effectiveZoom: number; onZoomChange: (zoom: EditorZoom) => void; focusMode: boolean; onToggleFocusMode: () => void; assistantOpen: boolean; onToggleAssistant: () => void }
-export function EditorToolbar({ editor, theme, onToggleTheme, zoom, effectiveZoom, onZoomChange, focusMode, onToggleFocusMode, assistantOpen, onToggleAssistant }: Props) {
+interface Props { editor: Editor | null; theme: EditorTheme; onToggleTheme: () => void; zoom: EditorZoom; effectiveZoom: number; onZoomChange: (zoom: EditorZoom) => void; focusMode: boolean; onToggleFocusMode: () => void; assistantAvailable: boolean; assistantOpen: boolean; onToggleAssistant: () => void }
+export function EditorToolbar({ editor, theme, onToggleTheme, zoom, effectiveZoom, onZoomChange, focusMode, onToggleFocusMode, assistantAvailable, assistantOpen, onToggleAssistant }: Props) {
   if (!editor) return <div className="h-11 border-b" />;
   const assistantShortcut = assistantShortcutLabel();
   const command = (label: string, active: boolean, icon: typeof Bold, run: () => void, disabled = false) => {
@@ -36,7 +36,7 @@ export function EditorToolbar({ editor, theme, onToggleTheme, zoom, effectiveZoo
       {command("Inserir link", editor.isActive("link"), LinkIcon, () => { const href = window.prompt("Endereço do link"); if (href) editor.chain().focus().extendMarkRange("link").setLink({ href }).run(); })}
     </div>
     <div className="flex shrink-0 items-center gap-1 border-l bg-card px-2 shadow-[-8px_0_12px_-12px_rgba(0,0,0,0.8)]">
-      <Button
+      {assistantAvailable ? <><Button
         type="button"
         size="sm"
         variant={assistantOpen ? "secondary" : "ghost"}
@@ -60,7 +60,7 @@ export function EditorToolbar({ editor, theme, onToggleTheme, zoom, effectiveZoo
       >
         <Sparkles />
       </Button>
-      <Separator orientation="vertical" className="mx-1 h-5" />
+      <Separator orientation="vertical" className="mx-1 h-5" /></> : null}
       <select
         aria-label="Zoom do documento"
         title="Zoom do documento"

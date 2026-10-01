@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   confirmAssistantTransparency,
-  getAssistantCapabilities,
   getAssistantTransparency,
   streamAssistantRequest,
 } from "@/features/ai-assistant/api";
@@ -24,7 +23,6 @@ import { ApiError } from "@/lib/api-client";
 
 vi.mock("@/features/ai-assistant/api", () => ({
   confirmAssistantTransparency: vi.fn(),
-  getAssistantCapabilities: vi.fn(),
   getAssistantTransparency: vi.fn(),
   streamAssistantRequest: vi.fn(),
 }));
@@ -34,19 +32,16 @@ vi.mock("@/features/contextos/api", () => ({
 }));
 
 const editors: Editor[] = [];
-const mockedCapabilities = vi.mocked(getAssistantCapabilities);
 const mockedTransparency = vi.mocked(getAssistantTransparency);
 const mockedConfirmTransparency = vi.mocked(confirmAssistantTransparency);
 const mockedStream = vi.mocked(streamAssistantRequest);
 const mockedContexts = vi.mocked(listarContextos);
 
 beforeEach(() => {
-  mockedCapabilities.mockReset();
   mockedTransparency.mockReset();
   mockedConfirmTransparency.mockReset();
   mockedStream.mockReset();
   mockedContexts.mockReset();
-  mockedCapabilities.mockResolvedValue(capabilities);
   mockedTransparency.mockResolvedValue(confirmedTransparency);
   mockedConfirmTransparency.mockResolvedValue(confirmedTransparency);
   mockedContexts.mockResolvedValue([]);
@@ -259,6 +254,37 @@ describe("AssistantPanel", () => {
     expect(additionalContext).toHaveValue("Considere o documento ainda não juntado.");
   });
 
+  it("exibe somente modos e ações liberados pelas capacidades", async () => {
+    renderPanel({ capabilities: chatOnlyCapabilities });
+
+    const modeSelect = await screen.findByRole("combobox", { name: "Modo" });
+    expect(modeSelect).toHaveValue("Perguntar");
+    expect(modeSelect.querySelectorAll("option")).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Reescrever" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Expandir" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Revisar" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Novo trecho" })).not.toBeInTheDocument();
+  });
+
+  it("revalida capacidades após recusa do backend sem apagar o pedido", async () => {
+    const user = userEvent.setup();
+    const onCapabilitiesInvalidated = vi.fn();
+    mockedStream.mockRejectedValue(new ApiError(
+      "Esta operação de IA não está habilitada para a organização.",
+      403,
+      "AI_FEATURE_NOT_ENABLED",
+    ));
+    renderPanel({ onCapabilitiesInvalidated });
+    const instruction = await screen.findByRole("textbox", { name: "O que você quer que a IA faça?" });
+
+    await user.type(instruction, "Revise a fundamentação.");
+    await user.click(screen.getByRole("button", { name: "Enviar para IA" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("não está habilitada");
+    expect(onCapabilitiesInvalidated).toHaveBeenCalledOnce();
+    expect(instruction).toHaveValue("Revise a fundamentação.");
+  });
+
   it("só altera a Peça depois da ação explícita de aplicar", async () => {
     const user = userEvent.setup();
     const editor = createEditor();
@@ -372,6 +398,8 @@ function panel(overrides: Partial<ComponentProps<typeof AssistantPanel>> = {}) {
     peca={peca}
     editorRevision={1}
     saveState="SALVO"
+    capabilities={capabilities}
+    onCapabilitiesInvalidated={() => undefined}
     onClose={() => undefined}
     {...props}
   />;
@@ -438,6 +466,7 @@ function completedEvent(
 
 const capabilities: AssistantCapabilities = {
   habilitado: true,
+  features: ["AI_ASSISTANT", "AI_EDIT", "AI_REVIEW"],
   modos: ["Perguntar", "Redigir", "Reescrever", "Revisar"],
   limites: {
     instrucaoCaracteres: 4_000,
@@ -446,6 +475,12 @@ const capabilities: AssistantCapabilities = {
   },
   suportaStreaming: true,
   suportaHistorico: false,
+};
+
+const chatOnlyCapabilities: AssistantCapabilities = {
+  ...capabilities,
+  features: ["AI_ASSISTANT"],
+  modos: ["Perguntar"],
 };
 
 const pendingTransparency: AssistantTransparency = {

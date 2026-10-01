@@ -5,6 +5,7 @@ export type FindingCategory = "Lacuna" | "Contradicao" | "Clareza" | "Estrutura"
 
 export interface AssistantCapabilities {
   habilitado: boolean;
+  features?: string[];
   modos: AssistantMode[];
   limites: {
     instrucaoCaracteres: number;
