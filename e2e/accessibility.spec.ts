@@ -26,6 +26,14 @@ test("painel vazio não possui violações críticas ou sérias", async ({ page 
   await expectNoSeriousAccessibilityViolations(page);
 });
 
+test("aviso de transparência não possui violações críticas ou sérias", async ({ page, request }) => {
+  await configureScenario(request, { transparency: "pending" });
+  await openAssistant(page);
+  await expect(page.getByRole("dialog", { name: "Uso de inteligência artificial" })).toBeVisible();
+
+  await expectNoSeriousAccessibilityViolations(page);
+});
+
 test("streaming não possui violações críticas ou sérias", async ({ page, request }) => {
   await configureScenario(request, { assistant: "slow" });
   await submitRewrite(page);

@@ -5,19 +5,27 @@ import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getAssistantCapabilities, streamAssistantRequest } from "@/features/ai-assistant/api";
+import {
+  confirmAssistantTransparency,
+  getAssistantCapabilities,
+  getAssistantTransparency,
+  streamAssistantRequest,
+} from "@/features/ai-assistant/api";
 import { AssistantPanel } from "@/features/ai-assistant/components/assistant-panel";
 import type {
   AssistantCapabilities,
   AssistantCompletedEvent,
   AssistantOperation,
+  AssistantTransparency,
 } from "@/features/ai-assistant/types";
 import { listarContextos } from "@/features/contextos/api";
 import type { Peca, SaveState } from "@/features/pecas/types";
 import { ApiError } from "@/lib/api-client";
 
 vi.mock("@/features/ai-assistant/api", () => ({
+  confirmAssistantTransparency: vi.fn(),
   getAssistantCapabilities: vi.fn(),
+  getAssistantTransparency: vi.fn(),
   streamAssistantRequest: vi.fn(),
 }));
 
@@ -27,14 +35,20 @@ vi.mock("@/features/contextos/api", () => ({
 
 const editors: Editor[] = [];
 const mockedCapabilities = vi.mocked(getAssistantCapabilities);
+const mockedTransparency = vi.mocked(getAssistantTransparency);
+const mockedConfirmTransparency = vi.mocked(confirmAssistantTransparency);
 const mockedStream = vi.mocked(streamAssistantRequest);
 const mockedContexts = vi.mocked(listarContextos);
 
 beforeEach(() => {
   mockedCapabilities.mockReset();
+  mockedTransparency.mockReset();
+  mockedConfirmTransparency.mockReset();
   mockedStream.mockReset();
   mockedContexts.mockReset();
   mockedCapabilities.mockResolvedValue(capabilities);
+  mockedTransparency.mockResolvedValue(confirmedTransparency);
+  mockedConfirmTransparency.mockResolvedValue(confirmedTransparency);
   mockedContexts.mockResolvedValue([]);
 });
 
@@ -43,6 +57,26 @@ afterEach(() => {
 });
 
 describe("AssistantPanel", () => {
+  it("exibe o aviso no primeiro uso e só libera o assistente após a confirmação", async () => {
+    const user = userEvent.setup();
+    mockedTransparency.mockResolvedValue(pendingTransparency);
+    mockedConfirmTransparency.mockResolvedValue(confirmedTransparency);
+    renderPanel();
+
+    const dialog = await screen.findByRole("dialog", { name: "Uso de inteligência artificial" });
+    expect(dialog).toHaveTextContent("Algumas informações do caso poderão ser processadas");
+    expect(dialog).toHaveTextContent("devem ser revisadas pelo profissional responsável");
+    expect(screen.queryByRole("textbox", { name: "O que você quer que a IA faça?" })).not.toBeInTheDocument();
+
+    const confirm = screen.getByRole("button", { name: "Entendi e continuar" });
+    expect(confirm).toHaveFocus();
+    await user.click(confirm);
+
+    await waitFor(() => expect(mockedConfirmTransparency).toHaveBeenCalledWith("ai-transparency-v1"));
+    expect(await screen.findByRole("textbox", { name: "O que você quer que a IA faça?" })).toHaveFocus();
+    expect(screen.queryByRole("dialog", { name: "Uso de inteligência artificial" })).not.toBeInTheDocument();
+  });
+
   it("não renderiza fechado e solicita fechamento por botão ou Escape", async () => {
     const user = userEvent.setup();
     const editor = createEditor();
@@ -412,6 +446,22 @@ const capabilities: AssistantCapabilities = {
   },
   suportaStreaming: true,
   suportaHistorico: false,
+};
+
+const pendingTransparency: AssistantTransparency = {
+  versao: "ai-transparency-v1",
+  confirmado: false,
+  confirmadoEm: null,
+  titulo: "Uso de inteligência artificial",
+  mensagem: "Algumas informações do caso poderão ser processadas por provedores de inteligência artificial.",
+  avisoDeRevisao: "As respostas devem ser revisadas pelo profissional responsável.",
+  politicaDePrivacidadeUrl: null,
+};
+
+const confirmedTransparency: AssistantTransparency = {
+  ...pendingTransparency,
+  confirmado: true,
+  confirmadoEm: "2026-10-01T03:30:00Z",
 };
 
 const peca: Peca = {

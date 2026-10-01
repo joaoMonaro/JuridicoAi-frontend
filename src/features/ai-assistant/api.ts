@@ -3,11 +3,22 @@ import type {
   AssistantCapabilities,
   AssistantRequest,
   AssistantStreamHandlers,
+  AssistantTransparency,
 } from "@/features/ai-assistant/types";
 import { ApiError, apiFetch, apiRequest } from "@/lib/api-client";
 
 export const getAssistantCapabilities = (signal?: AbortSignal) =>
   apiRequest<AssistantCapabilities>("/assistente/capacidades", { signal });
+
+export const getAssistantTransparency = (signal?: AbortSignal) =>
+  apiRequest<AssistantTransparency>("/assistente/transparencia", { signal });
+
+export const confirmAssistantTransparency = (version: string, signal?: AbortSignal) =>
+  apiRequest<AssistantTransparency>("/assistente/transparencia/confirmacoes", {
+    method: "POST",
+    body: JSON.stringify({ versao: version }),
+    signal,
+  });
 
 export async function streamAssistantRequest(
   pecaId: string,

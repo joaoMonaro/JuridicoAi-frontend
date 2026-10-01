@@ -70,12 +70,36 @@ const server = createServer(async (request, response) => {
     });
     return;
   }
+  if (request.method === "GET" && url.pathname === "/api/assistente/transparencia") {
+    sendJson(response, 200, transparencyNotice(scenario.transparency === "acknowledged"));
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/assistente/transparencia/confirmacoes") {
+    const input = await readJson(request);
+    if (input?.versao !== "ai-transparency-v1") {
+      sendJson(response, 409, {
+        code: "AI_TRANSPARENCY_NOTICE_OUTDATED",
+        detail: "O aviso de uso da IA foi atualizado.",
+      });
+      return;
+    }
+    scenario.transparency = "acknowledged";
+    sendJson(response, 200, transparencyNotice(true));
+    return;
+  }
   if (request.method === "GET" && url.pathname === `/api/casos/${caseId}/contextos`) {
     sendJson(response, 200, []);
     return;
   }
   const assistantRoute = url.pathname.match(/^\/api\/pecas\/([0-9a-f-]+)\/assistente\/solicitacoes$/u);
   if (request.method === "POST" && assistantRoute && pecas.has(assistantRoute[1])) {
+    if (scenario.transparency !== "acknowledged") {
+      sendJson(response, 428, {
+        code: "AI_TRANSPARENCY_ACK_REQUIRED",
+        detail: "Leia e confirme o aviso de uso da inteligência artificial antes de continuar.",
+      });
+      return;
+    }
     const input = await readJson(request);
     if (scenario.assistant === "error") {
       sendJson(response, 503, { detail: "O provedor de IA está temporariamente indisponível." });
@@ -219,6 +243,19 @@ function initialScenario() {
   return {
     assistant: "success",
     autosave: "success",
+    transparency: "acknowledged",
+  };
+}
+
+function transparencyNotice(confirmed) {
+  return {
+    versao: "ai-transparency-v1",
+    confirmado: confirmed,
+    confirmadoEm: confirmed ? "2026-10-01T03:30:00Z" : null,
+    titulo: "Uso de inteligência artificial",
+    mensagem: "Algumas informações do caso poderão ser processadas por provedores de inteligência artificial para gerar, revisar ou analisar conteúdo jurídico.",
+    avisoDeRevisao: "As respostas geradas por inteligência artificial podem conter erros e devem ser revisadas pelo profissional responsável.",
+    politicaDePrivacidadeUrl: null,
   };
 }
 

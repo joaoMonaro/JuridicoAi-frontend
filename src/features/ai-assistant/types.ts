@@ -15,6 +15,16 @@ export interface AssistantCapabilities {
   suportaHistorico: boolean;
 }
 
+export interface AssistantTransparency {
+  versao: string;
+  confirmado: boolean;
+  confirmadoEm: string | null;
+  titulo: string;
+  mensagem: string;
+  avisoDeRevisao: string;
+  politicaDePrivacidadeUrl: string | null;
+}
+
 export interface EditorRequestSnapshot {
   scope: DocumentContextScope;
   text: string;

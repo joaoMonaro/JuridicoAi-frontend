@@ -4,7 +4,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { streamAssistantRequest, getAssistantCapabilities } from "@/features/ai-assistant/api";
+import {
+  confirmAssistantTransparency,
+  getAssistantCapabilities,
+  getAssistantTransparency,
+  streamAssistantRequest,
+} from "@/features/ai-assistant/api";
 import {
   applySuggestion,
   canApplySuggestion,
@@ -17,6 +22,7 @@ import type {
   AssistantMode,
   AssistantOperation,
   AssistantRequest,
+  AssistantTransparency,
   DocumentContextScope,
 } from "@/features/ai-assistant/types";
 import { listarContextos } from "@/features/contextos/api";
@@ -61,6 +67,9 @@ const operationLabels: Record<AssistantOperation, string> = {
 export function AssistantPanel({ open, editor, peca, editorRevision, saveState, onClose }: Props) {
   const [capabilities, setCapabilities] = useState<AssistantCapabilities | null>(null);
   const [capabilitiesError, setCapabilitiesError] = useState("");
+  const [transparency, setTransparency] = useState<AssistantTransparency | null>(null);
+  const [transparencyError, setTransparencyError] = useState("");
+  const [confirmingTransparency, setConfirmingTransparency] = useState(false);
   const [contexts, setContexts] = useState<ContextoCaso[] | null>(null);
   const [contextsError, setContextsError] = useState("");
   const [mode, setMode] = useState<AssistantMode>("Perguntar");
@@ -91,7 +100,19 @@ export function AssistantPanel({ open, editor, peca, editorRevision, saveState, 
   }, [open, capabilities, capabilitiesError]);
 
   useEffect(() => {
-    if (!open || contexts !== null || contextsError) return;
+    if (!open || !capabilities?.habilitado || transparency || transparencyError) return;
+    const controller = new AbortController();
+    getAssistantTransparency(controller.signal)
+      .then(setTransparency)
+      .catch((requestError) => {
+        if (requestError instanceof Error && requestError.name === "AbortError") return;
+        setTransparencyError(requestError instanceof Error ? requestError.message : "Não foi possível consultar o aviso de uso da IA.");
+      });
+    return () => controller.abort();
+  }, [open, capabilities?.habilitado, transparency, transparencyError]);
+
+  useEffect(() => {
+    if (!open || !transparency?.confirmado || contexts !== null || contextsError) return;
     const controller = new AbortController();
     listarContextos(peca.casoId, controller.signal)
       .then(setContexts)
@@ -100,15 +121,15 @@ export function AssistantPanel({ open, editor, peca, editorRevision, saveState, 
         setContextsError(requestError instanceof Error ? requestError.message : "Não foi possível carregar os contextos do caso.");
       });
     return () => controller.abort();
-  }, [open, contexts, contextsError, peca.casoId]);
+  }, [open, transparency?.confirmado, contexts, contextsError, peca.casoId]);
 
   useEffect(() => () => requestController.current?.abort(), []);
 
   useEffect(() => {
-    if (!open || !capabilities?.habilitado) return;
+    if (!open || !capabilities?.habilitado || !transparency?.confirmado) return;
     const frame = requestAnimationFrame(() => instructionRef.current?.focus());
     return () => cancelAnimationFrame(frame);
-  }, [capabilities?.habilitado, open]);
+  }, [capabilities?.habilitado, open, transparency?.confirmado]);
 
   useEffect(() => {
     let frame: number | undefined;
@@ -218,6 +239,10 @@ export function AssistantPanel({ open, editor, peca, editorRevision, saveState, 
         setError("Solicitação cancelada.");
         setPhase("idle");
       } else {
+        if (requestError instanceof ApiError && requestError.code === "AI_TRANSPARENCY_ACK_REQUIRED") {
+          setTransparency(null);
+          setTransparencyError("");
+        }
         setError(requestError instanceof ApiError ? requestError.message : "Não foi possível concluir a solicitação.");
         setPhase("error");
       }
@@ -274,9 +299,37 @@ export function AssistantPanel({ open, editor, peca, editorRevision, saveState, 
       : [...current, id]);
   }
 
+  async function confirmTransparency() {
+    if (!transparency || confirmingTransparency) return;
+    setConfirmingTransparency(true);
+    setTransparencyError("");
+    try {
+      setTransparency(await confirmAssistantTransparency(transparency.versao));
+    } catch (requestError) {
+      if (requestError instanceof ApiError && requestError.code === "AI_TRANSPARENCY_NOTICE_OUTDATED") {
+        setTransparency(null);
+        setTransparencyError("");
+        return;
+      }
+      setTransparencyError(requestError instanceof Error
+        ? requestError.message
+        : "Não foi possível registrar a confirmação.");
+    } finally {
+      setConfirmingTransparency(false);
+    }
+  }
+
   if (!open) return null;
 
-  return <aside className="absolute inset-y-0 right-0 z-30 flex w-full max-w-[390px] shrink-0 flex-col border-l bg-card shadow-2xl xl:static xl:z-auto xl:w-[380px] xl:shadow-none" aria-label="Assistente de IA">
+  const transparencyPending = Boolean(capabilities?.habilitado && transparency && !transparency.confirmado);
+
+  return <>
+  <aside
+    className="absolute inset-y-0 right-0 z-30 flex w-full max-w-[390px] shrink-0 flex-col border-l bg-card shadow-2xl xl:static xl:z-auto xl:w-[380px] xl:shadow-none"
+    aria-label="Assistente de IA"
+    aria-hidden={transparencyPending || undefined}
+    inert={transparencyPending || undefined}
+  >
     <header className="flex h-11 shrink-0 items-center gap-2 border-b px-3">
       <span className="grid size-7 place-items-center rounded-md bg-primary/15 text-primary"><Sparkles className="size-4" aria-hidden="true" /></span>
       <div className="min-w-0 flex-1"><h2 className="text-sm font-semibold">Assistente de IA</h2><p className="truncate text-[10px] text-muted-foreground">A IA sugere; você decide o que aplicar</p></div>
@@ -284,11 +337,12 @@ export function AssistantPanel({ open, editor, peca, editorRevision, saveState, 
     </header>
 
     <div className="min-h-0 flex-1 overflow-y-auto p-3">
-      {!capabilities && !capabilitiesError ? <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><LoaderCircle className="animate-spin" />Consultando disponibilidade...</div> : null}
+      {(!capabilities && !capabilitiesError) || (capabilities?.habilitado && !transparency && !transparencyError) ? <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><LoaderCircle className="animate-spin" />Consultando disponibilidade...</div> : null}
       {capabilitiesError ? <div><ErrorBox message={capabilitiesError} /><Button type="button" size="sm" variant="outline" className="mt-2" onClick={() => setCapabilitiesError("")}><RotateCcw />Tentar novamente</Button></div> : null}
+      {transparencyError && !transparency ? <div><ErrorBox message={transparencyError} /><Button type="button" size="sm" variant="outline" className="mt-2" onClick={() => setTransparencyError("")}><RotateCcw />Tentar novamente</Button></div> : null}
       {capabilities && !capabilities.habilitado ? <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-sm"><div className="flex items-center gap-2 font-medium text-warning"><AlertTriangle className="size-4" />Assistente desabilitado</div><p className="mt-2 text-xs leading-5 text-muted-foreground">Configure o provider, o modelo e a chave no backend para habilitar esta funcionalidade.</p></div> : null}
 
-      {capabilities?.habilitado ? <>
+      {capabilities?.habilitado && transparency?.confirmado ? <>
         <section aria-labelledby="assistant-actions-title">
           <h3 id="assistant-actions-title" className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Ações rápidas</h3>
           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -341,7 +395,105 @@ export function AssistantPanel({ open, editor, peca, editorRevision, saveState, 
         </> : null}
       </> : null}
     </div>
-  </aside>;
+  </aside>
+  {transparencyPending && transparency ? <AssistantTransparencyDialog
+    notice={transparency}
+    confirming={confirmingTransparency}
+    error={transparencyError}
+    onConfirm={() => void confirmTransparency()}
+    onClose={close}
+  /> : null}
+  </>;
+}
+
+interface TransparencyDialogProps {
+  notice: AssistantTransparency;
+  confirming: boolean;
+  error: string;
+  onConfirm: () => void;
+  onClose: () => void;
+}
+
+function AssistantTransparencyDialog({
+  notice,
+  confirming,
+  error,
+  onConfirm,
+  onClose,
+}: TransparencyDialogProps) {
+  const dialogRef = useRef<HTMLElement>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    confirmRef.current?.focus();
+    const trapFocus = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ));
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    dialog.addEventListener("keydown", trapFocus);
+    return () => dialog.removeEventListener("keydown", trapFocus);
+  }, [onClose]);
+
+  return <div className="fixed inset-0 z-50 grid place-items-center bg-black/65 p-4" role="presentation">
+    <section
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="assistant-transparency-title"
+      aria-describedby="assistant-transparency-description assistant-transparency-review"
+      className="w-full max-w-lg rounded-lg border bg-popover shadow-2xl"
+    >
+      <header className="flex items-start justify-between gap-4 border-b px-5 py-4">
+        <div>
+          <h2 id="assistant-transparency-title" className="font-semibold">{notice.titulo}</h2>
+          <p className="mt-1 text-xs text-muted-foreground">Leia este aviso antes de usar o assistente.</p>
+        </div>
+        <Button type="button" variant="ghost" size="icon-sm" onClick={onClose} aria-label="Fechar aviso"><X /></Button>
+      </header>
+      <div className="space-y-3 px-5 py-4 text-sm leading-6">
+        <p id="assistant-transparency-description">{notice.mensagem}</p>
+        <p id="assistant-transparency-review" className="rounded-md border border-warning/30 bg-warning/10 p-3">
+          {notice.avisoDeRevisao}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Esta confirmação registra que o aviso foi apresentado. Ela não autoriza alterações automáticas na Peça.
+        </p>
+        {notice.politicaDePrivacidadeUrl ? <a
+          className="inline-flex text-xs font-medium text-primary underline underline-offset-4"
+          href={notice.politicaDePrivacidadeUrl}
+          target="_blank"
+          rel="noreferrer"
+        >Consultar Política de Privacidade</a> : null}
+        {error ? <ErrorBox message={error} /> : null}
+      </div>
+      <footer className="flex flex-wrap justify-end gap-2 border-t px-5 py-4">
+        <Button type="button" variant="ghost" onClick={onClose} disabled={confirming}>Agora não</Button>
+        <Button ref={confirmRef} type="button" onClick={onConfirm} disabled={confirming}>
+          {confirming ? <><LoaderCircle className="animate-spin" />Registrando...</> : "Entendi e continuar"}
+        </Button>
+      </footer>
+    </section>
+  </div>;
 }
 
 interface ResultProps {
