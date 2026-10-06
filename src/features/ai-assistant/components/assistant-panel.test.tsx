@@ -1,6 +1,6 @@
 import { Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -153,7 +153,7 @@ describe("AssistantPanel", () => {
     renderPanel({ editor });
 
     await user.click(await screen.findByRole("button", { name: "Reescrever" }));
-    await user.click(screen.getByText("Contexto adicional e dados do caso"));
+    await user.click(screen.getByText("+ Adicionar contexto"));
     await user.click(screen.getByRole("checkbox", { name: /Incluir dados do caso/ }));
     await user.click(await screen.findByRole("checkbox", { name: /Notas estratégicas/ }));
     await user.type(
@@ -244,7 +244,7 @@ describe("AssistantPanel", () => {
     const instruction = await screen.findByRole("textbox", { name: "O que você quer que a IA faça?" });
 
     await user.type(instruction, "Revise a fundamentação.");
-    await user.click(screen.getByText("Contexto adicional e dados do caso"));
+    await user.click(screen.getByText("+ Adicionar contexto"));
     const additionalContext = screen.getByRole("textbox", { name: "Informação apenas para este pedido" });
     await user.type(additionalContext, "Considere o documento ainda não juntado.");
     await user.click(screen.getByRole("button", { name: "Enviar para IA" }));
@@ -257,9 +257,8 @@ describe("AssistantPanel", () => {
   it("exibe somente modos e ações liberados pelas capacidades", async () => {
     renderPanel({ capabilities: chatOnlyCapabilities });
 
-    const modeSelect = await screen.findByRole("combobox", { name: "Modo" });
-    expect(modeSelect).toHaveValue("Perguntar");
-    expect(modeSelect.querySelectorAll("option")).toHaveLength(1);
+    await screen.findByRole("textbox", { name: "O que você quer que a IA faça?" });
+    expect(screen.queryByRole("combobox", { name: "Modo" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Reescrever" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Expandir" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Revisar" })).not.toBeInTheDocument();
@@ -299,7 +298,7 @@ describe("AssistantPanel", () => {
 
     await user.click(await screen.findByRole("button", { name: "Reescrever" }));
     await user.click(screen.getByRole("button", { name: "Enviar para IA" }));
-    expect(await screen.findByText("Original")).toBeVisible();
+    await user.click(await screen.findByText("Ver texto original"));
     expect(screen.getByText("Trecho original.")).toBeVisible();
     expect(editor.getText()).toContain("Trecho original.");
 
@@ -379,10 +378,45 @@ describe("AssistantPanel", () => {
 
     await user.click(screen.getByRole("button", { name: "Tentar novamente" }));
     await waitFor(() => expect(mockedStream).toHaveBeenCalledTimes(2));
-    await user.click(screen.getByRole("button", { name: "Rejeitar" }));
+    const turns = screen.getAllByLabelText("Troca com o assistente");
+    await user.click(within(turns.at(-1)!).getByRole("button", { name: "Rejeitar" }));
 
-    expect(screen.queryByRole("heading", { name: "Resposta da IA" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { name: "Resposta da IA" })).toHaveLength(2);
+    expect(within(turns.at(-1)!).getByText(/Sugestão rejeitada/)).toBeVisible();
     expect(editor.getJSON()).toEqual(originalJson);
+  });
+
+  it("preserva a conversa ao fechar e reabrir o painel", async () => {
+    const user = userEvent.setup();
+    completeImmediately(completedEvent("ResponderNoPainel"));
+    const editor = createEditor();
+    const view = renderPanel({ editor });
+
+    await user.type(
+      await screen.findByRole("textbox", { name: "O que você quer que a IA faça?" }),
+      "Analise este argumento.",
+    );
+    await user.click(screen.getByRole("button", { name: "Enviar para IA" }));
+    expect(await screen.findByRole("heading", { name: "Resposta da IA" })).toBeVisible();
+
+    view.rerender(panel({ open: false, editor }));
+    expect(screen.queryByRole("heading", { name: "Resposta da IA" })).not.toBeInTheDocument();
+    view.rerender(panel({ open: true, editor }));
+
+    expect(await screen.findByRole("heading", { name: "Resposta da IA" })).toBeVisible();
+    expect(screen.getByText("Analise este argumento.")).toBeVisible();
+  });
+
+  it("permite ampliar a largura e expandir o assistente", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    const resize = await screen.findByRole("button", { name: "Aumentar largura do assistente" });
+    await user.click(resize);
+    expect(screen.getByRole("button", { name: "Reduzir largura do assistente" })).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(screen.getByRole("button", { name: "Expandir assistente" }));
+    expect(screen.getByRole("button", { name: "Restaurar assistente" })).toHaveAttribute("aria-expanded", "true");
   });
 });
 
