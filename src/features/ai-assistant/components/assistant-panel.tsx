@@ -1,6 +1,6 @@
 import type { Editor } from "@tiptap/react";
 import { AlertTriangle, Check, CircleAlert, Copy, LoaderCircle, Maximize2, Minimize2, MoveHorizontal, RotateCcw, Send, ShieldCheck, Sparkles, Square, WandSparkles, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type FocusEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -48,10 +48,18 @@ type ConversationTurnStatus = "sending" | "streaming" | "completed" | "applied" 
 interface RequestDraft {
   mode: AssistantMode;
   scope: DocumentContextScope;
+  selectionSnapshot: SelectionSnapshot | null;
   instruction: string;
   additionalContext: string;
   includeCaseData: boolean;
   selectedContextIds: string[];
+}
+
+interface SelectionSnapshot {
+  from: number;
+  to: number;
+  text: string;
+  editorRevision: number;
 }
 
 interface ConversationTurn extends RequestDraft {
@@ -85,6 +93,29 @@ const operationLabels: Record<AssistantOperation, string> = {
   CriarSecao: "Criar seção",
 };
 
+function captureSelection(editor: Editor, editorRevision: number): SelectionSnapshot | null {
+  const { from, to, empty } = editor.state.selection;
+  if (empty) return null;
+  const text = editor.state.doc.textBetween(from, to, "\n");
+  if (!text.trim()) return null;
+  return { from, to, text, editorRevision };
+}
+
+function snapshotFromSelection(selection: SelectionSnapshot): ReturnType<typeof captureEditorContext> {
+  return {
+    scope: "Selecao",
+    text: selection.text,
+    sectionTitle: null,
+    selection: {
+      from: selection.from,
+      to: selection.to,
+      originalText: selection.text,
+    },
+    cursorPosition: selection.to,
+    editorRevision: selection.editorRevision,
+  };
+}
+
 export function AssistantPanel({ open, capabilities, editor, peca, editorRevision, saveState, onCapabilitiesInvalidated, onClose }: Props) {
   const [transparency, setTransparency] = useState<AssistantTransparency | null>(null);
   const [transparencyError, setTransparencyError] = useState("");
@@ -92,7 +123,8 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
   const [contexts, setContexts] = useState<ContextoCaso[] | null>(null);
   const [contextsError, setContextsError] = useState("");
   const [mode, setMode] = useState<AssistantMode>("Perguntar");
-  const [scope, setScope] = useState<DocumentContextScope>("SecaoAtual");
+  const [scope, setScope] = useState<DocumentContextScope>("Nenhum");
+  const [selectionSnapshot, setSelectionSnapshot] = useState<SelectionSnapshot | null>(null);
   const [instruction, setInstruction] = useState("");
   const [additionalContext, setAdditionalContext] = useState("");
   const [includeCaseData, setIncludeCaseData] = useState(false);
@@ -105,6 +137,7 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
   const instructionRef = useRef<HTMLTextAreaElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
   const requestController = useRef<AbortController | null>(null);
+  const editorRevisionRef = useRef(editorRevision);
   const wasOpen = useRef(open);
 
   const turns = useMemo(() => conversations[peca.id] ?? [], [conversations, peca.id]);
@@ -136,6 +169,22 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
   }, [open, transparency?.confirmado, contexts, contextsError, peca.casoId]);
 
   useEffect(() => () => requestController.current?.abort(), []);
+
+  useEffect(() => {
+    editorRevisionRef.current = editorRevision;
+  }, [editorRevision]);
+
+  useEffect(() => {
+    if (!open || !editor || !transparency?.confirmado) return;
+    const snapshot = captureSelection(editor, editorRevisionRef.current);
+    if (snapshot) {
+      setSelectionSnapshot(snapshot);
+      setScope("Selecao");
+    } else {
+      setSelectionSnapshot(null);
+      setScope((current) => current === "Selecao" ? "Nenhum" : current);
+    }
+  }, [editor, open, peca.id, transparency?.confirmado]);
 
   useEffect(() => {
     if (!open || !capabilities.habilitado || !transparency?.confirmado) return;
@@ -181,15 +230,40 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
 
   function changeMode(nextMode: AssistantMode) {
     setMode(nextMode);
-    if (nextMode === "Reescrever") setScope("Selecao");
-    else if (nextMode === "Redigir" && !editor?.getText().trim()) setScope("Nenhum");
-    else if (scope === "Selecao" && editor?.state.selection.empty) setScope("SecaoAtual");
+    if (nextMode === "Redigir" && !editor?.getText().trim()) selectDocumentScope("Nenhum");
   }
 
   function quickAction(nextMode: AssistantMode, nextInstruction: string, nextScope?: DocumentContextScope) {
     changeMode(nextMode);
     setInstruction(nextInstruction);
-    if (nextScope) setScope(nextScope);
+    if (nextScope) selectDocumentScope(nextScope);
+  }
+
+  function selectDocumentScope(nextScope: DocumentContextScope) {
+    setComposerError("");
+    if (nextScope === "Selecao") {
+      if (!editor) return;
+      const snapshot = captureSelection(editor, editorRevision);
+      if (!snapshot) {
+        setSelectionSnapshot(null);
+        setScope("Nenhum");
+        setComposerError("Selecione um trecho antes de usar esse escopo.");
+        return;
+      }
+      setSelectionSnapshot(snapshot);
+    } else {
+      setSelectionSnapshot(null);
+    }
+    setScope(nextScope);
+  }
+
+  function captureSelectionOnAssistantFocus(event: FocusEvent<HTMLElement>) {
+    if (!editor || !(event.relatedTarget instanceof Node) || !editor.view.dom.contains(event.relatedTarget)) return;
+    const snapshot = captureSelection(editor, editorRevisionRef.current);
+    if (!snapshot) return;
+    setSelectionSnapshot(snapshot);
+    setScope("Selecao");
+    setComposerError("");
   }
 
   function preferredOperation(requestMode: AssistantMode, snapshot: ReturnType<typeof captureEditorContext>): AssistantOperation {
@@ -209,6 +283,7 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
     const draft: RequestDraft = draftOverride ?? {
       mode,
       scope,
+      selectionSnapshot,
       instruction,
       additionalContext,
       includeCaseData,
@@ -218,7 +293,19 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
     setComposerError("");
     let snapshot: ReturnType<typeof captureEditorContext>;
     try {
-      snapshot = captureEditorContext(editor, draft.scope, editorRevision);
+      if (draft.mode === "Reescrever" && !draft.selectionSnapshot) {
+        throw new Error("Selecione um trecho antes de usar esse escopo.");
+      }
+      snapshot = draft.scope === "Selecao" && draft.selectionSnapshot
+        ? snapshotFromSelection(draft.selectionSnapshot)
+        : captureEditorContext(editor, draft.scope, editorRevision);
+      if (draft.scope !== "Selecao") {
+        snapshot = {
+          ...snapshot,
+          selection: null,
+          cursorPosition: editor.state.selection.from,
+        };
+      }
     } catch (snapshotError) {
       setComposerError(snapshotError instanceof Error ? snapshotError.message : "Não foi possível capturar o contexto do editor.");
       return;
@@ -359,7 +446,7 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
     changeMode("Redigir");
     setInstruction(`Desenvolva um trecho jurídico para a seguinte melhoria: ${title}.`);
     setAdditionalContext(description);
-    if (scope === "Nenhum") setScope("SecaoAtual");
+    if (scope === "Nenhum") selectDocumentScope("SecaoAtual");
     instructionRef.current?.focus();
   }
 
@@ -406,6 +493,7 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
     aria-label="Assistente de IA"
     aria-hidden={transparencyPending || undefined}
     inert={transparencyPending || undefined}
+    onFocusCapture={captureSelectionOnAssistantFocus}
   >
     <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
       <span className="grid size-7 place-items-center rounded-md bg-primary/15 text-primary"><Sparkles className="size-4" aria-hidden="true" /></span>
@@ -444,6 +532,18 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
       {mode !== "Perguntar" ? <div className="mb-2 flex items-center gap-1.5">
         <span className="inline-flex items-center gap-1 rounded-full border border-primary/25 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary">{modeLabels[mode]}<button type="button" className="rounded-full p-0.5 hover:bg-primary/10" onClick={() => changeMode("Perguntar")} aria-label={`Remover ação ${modeLabels[mode]}`}><X className="size-3" /></button></span>
       </div> : null}
+      {scope !== "Nenhum" || includeCaseData || selectedContextIds.length > 0 || additionalContext ? <div className="mb-2 flex flex-wrap gap-1.5" aria-label="Contextos do próximo pedido">
+        {scope !== "Nenhum" ? <ContextChip
+          label={scope === "Selecao" && selectionSnapshot ? `Seleção · ${selectionSnapshot.text.length} caracteres` : scopeLabels[scope]}
+          onRemove={() => selectDocumentScope("Nenhum")}
+        /> : null}
+        {includeCaseData ? <ContextChip label="Dados essenciais do Caso" onRemove={() => setIncludeCaseData(false)} /> : null}
+        {selectedContextIds.map((id) => {
+          const context = contexts?.find((item) => item.id === id);
+          return <ContextChip key={id} label={context?.titulo || (context ? CONTEXTO_TIPO_LABELS[context.tipo] : "Contexto do Caso")} onRemove={() => toggleContext(id)} />;
+        })}
+        {additionalContext ? <ContextChip label={`Informação adicional · ${additionalContext.length} caracteres`} onRemove={() => setAdditionalContext("")} /> : null}
+      </div> : null}
       <label className="sr-only" htmlFor="assistant-composer">O que você quer que a IA faça?</label>
       <div className="rounded-lg border bg-background shadow-sm focus-within:ring-2 focus-within:ring-ring/40">
         <Textarea
@@ -466,7 +566,7 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
           <details className="relative">
             <summary className="cursor-pointer list-none rounded-md px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground">+ Adicionar contexto</summary>
             <div className="absolute bottom-8 left-0 z-20 w-80 max-w-[calc(100vw-2rem)] rounded-lg border bg-popover p-3 shadow-xl">
-              <label className="text-xs font-medium">Trecho da Peça<select className="mt-1 h-8 w-full rounded-md border bg-background px-2 text-xs" value={scope} disabled={busy} onChange={(event) => setScope(event.target.value as DocumentContextScope)}>{Object.entries(scopeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+              <label className="text-xs font-medium">Trecho da Peça<select className="mt-1 h-8 w-full rounded-md border bg-background px-2 text-xs" value={scope} disabled={busy} onChange={(event) => selectDocumentScope(event.target.value as DocumentContextScope)}>{Object.entries(scopeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
               <label className="mt-3 flex items-start gap-2 text-xs"><input type="checkbox" className="mt-0.5 accent-primary" checked={includeCaseData} disabled={busy} onChange={(event) => setIncludeCaseData(event.target.checked)} /><span><span className="font-medium">Incluir dados do caso</span><span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">Envia somente os dados essenciais. Documentos pessoais não são incluídos.</span></span></label>
               {contexts?.length ? <fieldset className="mt-3"><legend className="text-[11px] font-medium">Contextos cadastrados</legend><div className="mt-1.5 max-h-32 space-y-1 overflow-y-auto">{contexts.map((item) => <label key={item.id} className="flex items-start gap-2 rounded px-1 py-1 text-xs hover:bg-muted"><input type="checkbox" className="mt-0.5 accent-primary" checked={selectedContextIds.includes(item.id)} disabled={busy} onChange={() => toggleContext(item.id)} /><span className="min-w-0"><span className="block truncate">{item.titulo || CONTEXTO_TIPO_LABELS[item.tipo]}</span><span className="text-[10px] text-muted-foreground">{CONTEXTO_TIPO_LABELS[item.tipo]}</span></span></label>)}</div></fieldset> : null}
               {contextsError ? <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-destructive"><span>{contextsError}</span><Button type="button" size="xs" variant="outline" onClick={() => setContextsError("")}><RotateCcw />Tentar novamente</Button></div> : null}
@@ -493,6 +593,13 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
     onClose={close}
   /> : null}
   </>;
+}
+
+function ContextChip({ label, onRemove }: { label: string; onRemove: () => void }) {
+  return <span className="inline-flex max-w-full items-center gap-1 rounded-full border bg-muted/60 py-1 pl-2 pr-1 text-[11px] text-foreground">
+    <span className="truncate">{label}</span>
+    <button type="button" className="grid size-5 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground" onClick={onRemove} aria-label={`Remover contexto: ${label}`}><X className="size-3" /></button>
+  </span>;
 }
 
 function ConversationEmptyState() {
@@ -534,7 +641,7 @@ function ConversationTurnView({ turn, contexts, editor, editorRevision, saveStat
     <div className="ml-auto max-w-[88%] rounded-2xl rounded-br-sm bg-primary px-3 py-2.5 text-primary-foreground">
       <p className="whitespace-pre-wrap text-sm leading-5">{turn.instruction}</p>
       <details className="mt-1.5 text-[10px] opacity-80">
-        <summary className="cursor-pointer">{modeLabels[turn.mode]} · {scopeLabels[turn.scope]}</summary>
+        <summary className="cursor-pointer">{modeLabels[turn.mode]} · {turn.scope === "Selecao" && turn.selectionSnapshot ? `Seleção · ${turn.selectionSnapshot.text.length} caracteres` : scopeLabels[turn.scope]}</summary>
         <ul className="mt-1 space-y-0.5">
           {turn.includeCaseData ? <li>Dados essenciais do Caso</li> : null}
           {selectedContexts.map((context) => <li key={context.id}>{context.titulo || CONTEXTO_TIPO_LABELS[context.tipo]}</li>)}

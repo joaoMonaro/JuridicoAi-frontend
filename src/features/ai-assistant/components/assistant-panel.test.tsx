@@ -1,6 +1,6 @@
 import { Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -64,7 +64,7 @@ describe("AssistantPanel", () => {
     expect(screen.queryByRole("textbox", { name: "O que você quer que a IA faça?" })).not.toBeInTheDocument();
 
     const confirm = screen.getByRole("button", { name: "Entendi e continuar" });
-    expect(confirm).toHaveFocus();
+    await waitFor(() => expect(confirm).toHaveFocus());
     await user.click(confirm);
 
     await waitFor(() => expect(mockedConfirmTransparency).toHaveBeenCalledWith("ai-transparency-v1"));
@@ -104,7 +104,7 @@ describe("AssistantPanel", () => {
     expect(mockedStream).not.toHaveBeenCalled();
   });
 
-  it("envia pergunta sem seleção com a seção atual", async () => {
+  it("envia pergunta sem seleção sem anexar conteúdo da Peça", async () => {
     const user = userEvent.setup();
     completeImmediately(completedEvent("ResponderNoPainel"));
     renderPanel();
@@ -124,11 +124,109 @@ describe("AssistantPanel", () => {
       operacaoPreferida: "ResponderNoPainel",
       contexto: {
         documento: {
-          escopo: "SecaoAtual",
+          escopo: "Nenhum",
+          texto: null,
           selecao: null,
         },
       },
     });
+  });
+
+  it("anexa automaticamente a seleção como chip e envia o snapshot capturado", async () => {
+    const user = userEvent.setup();
+    const editor = createEditor();
+    const range = findText(editor, "Trecho original.");
+    editor.commands.setTextSelection(range);
+    completeImmediately(completedEvent("ResponderNoPainel"));
+    renderPanel({ editor, editorRevision: 3 });
+
+    expect(await screen.findByText("Seleção · 16 caracteres")).toBeVisible();
+    editor.commands.setTextSelection(1);
+    await user.type(
+      screen.getByRole("textbox", { name: "O que você quer que a IA faça?" }),
+      "Analise este trecho.",
+    );
+    await user.click(screen.getByRole("button", { name: "Enviar para IA" }));
+    await screen.findByRole("heading", { name: "Resposta da IA" });
+
+    const [, request] = mockedStream.mock.calls[0];
+    expect(request.contexto.documento).toMatchObject({
+      escopo: "Selecao",
+      texto: "Trecho original.",
+      selecao: {
+        from: range.from,
+        to: range.to,
+        textoOriginal: "Trecho original.",
+      },
+      revisaoEditor: 3,
+    });
+  });
+
+  it("captura uma nova seleção quando o foco retorna do editor para o assistente", async () => {
+    const editor = createEditor();
+    renderPanel({ editor, editorRevision: 4 });
+    const composer = await screen.findByRole("textbox", { name: "O que você quer que a IA faça?" });
+    expect(screen.queryByText(/Seleção · 16 caracteres/)).not.toBeInTheDocument();
+
+    editor.commands.setTextSelection(findText(editor, "Trecho original."));
+    fireEvent.focus(composer, { relatedTarget: editor.view.dom });
+
+    expect(await screen.findByText("Seleção · 16 caracteres")).toBeVisible();
+  });
+
+  it("permite remover a seleção automática antes do envio", async () => {
+    const user = userEvent.setup();
+    const editor = createEditor();
+    editor.commands.setTextSelection(findText(editor, "Trecho original."));
+    completeImmediately(completedEvent("ResponderNoPainel"));
+    renderPanel({ editor });
+
+    await user.click(await screen.findByRole("button", { name: "Remover contexto: Seleção · 16 caracteres" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "O que você quer que a IA faça?" }),
+      "Responda sem usar a seleção.",
+    );
+    await user.click(screen.getByRole("button", { name: "Enviar para IA" }));
+    await screen.findByRole("heading", { name: "Resposta da IA" });
+
+    const [, request] = mockedStream.mock.calls[0];
+    expect(request.contexto.documento).toMatchObject({
+      escopo: "Nenhum",
+      texto: null,
+      selecao: null,
+    });
+  });
+
+  it("representa os contextos opcionais como chips removíveis", async () => {
+    const user = userEvent.setup();
+    mockedContexts.mockResolvedValue([{
+      id: "contexto-1",
+      casoId: peca.casoId,
+      tipo: "Observacao",
+      titulo: "Notas estratégicas",
+      conteudo: "Conteúdo",
+      dataCriacao: "2026-09-30T00:00:00Z",
+      dataAtualizacao: "2026-09-30T00:00:00Z",
+    }]);
+    renderPanel();
+
+    await user.click(await screen.findByText("+ Adicionar contexto"));
+    const caseCheckbox = screen.getByRole("checkbox", { name: /Incluir dados do caso/ });
+    const contextCheckbox = await screen.findByRole("checkbox", { name: /Notas estratégicas/ });
+    await user.click(caseCheckbox);
+    await user.click(contextCheckbox);
+    await user.type(
+      screen.getByRole("textbox", { name: "Informação apenas para este pedido" }),
+      "Dado temporário.",
+    );
+
+    await user.click(screen.getByRole("button", { name: "Remover contexto: Dados essenciais do Caso" }));
+    await user.click(screen.getByRole("button", { name: "Remover contexto: Notas estratégicas" }));
+    await user.click(screen.getByRole("button", { name: /Remover contexto: Informação adicional/ }));
+
+    expect(caseCheckbox).not.toBeChecked();
+    expect(contextCheckbox).not.toBeChecked();
+    expect(screen.getByRole("textbox", { name: "Informação apenas para este pedido" })).toHaveValue("");
   });
 
   it("envia seleção e somente os contextos explicitamente marcados", async () => {
