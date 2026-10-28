@@ -1,5 +1,5 @@
 import { apiRequest } from "@/lib/api-client";
-import type { Peca, PecaPatch, PecaResumo } from "@/features/pecas/types";
+import type { Peca, PecaApresentacao, PecaPatch, PecaResumo } from "@/features/pecas/types";
 
 export const listarPecas = (casoId: string, signal?: AbortSignal) =>
   apiRequest<PecaResumo[]>(`/casos/${casoId}/pecas`, { signal });
@@ -14,7 +14,7 @@ export const criarPeca = (casoId: string, titulo: string, templateId?: string) =
   });
 
 export const atualizarPeca = (pecaId: string, versao: number, patch: PecaPatch) =>
-  apiRequest<{ id: string; versao: number; dataAtualizacao: string }>(`/pecas/${pecaId}`, {
+  apiRequest<{ id: string; versao: number; dataAtualizacao: string; apresentacao?: PecaApresentacao | null }>(`/pecas/${pecaId}`, {
     method: "PATCH",
     body: JSON.stringify({ versao, ...patch }),
   });

@@ -47,9 +47,10 @@ export interface TemplatePeca {
   dataAtualizacao: string;
 }
 
-export type PecaPatch = Partial<Pick<Peca, "titulo" | "conteudoJson" | "pageConfig" | "headerJson" | "footerJson" | "styles" | "status">>;
+export type PecaApresentacao = Pick<Peca, "templateId" | "pageConfig" | "styles" | "headerJson" | "footerJson">;
+export type PecaPatch = Partial<Pick<Peca, "titulo" | "conteudoJson" | "pageConfig" | "headerJson" | "footerJson" | "styles" | "status" | "templateId">>;
 export type SaveState = "SALVO" | "NAO_SALVO" | "SALVANDO" | "ERRO" | "CONFLITO";
 
 export const EMPTY_DOCUMENT: JSONContent = { type: "doc", content: [{ type: "paragraph" }] };
-export const DEFAULT_PAGE_CONFIG: PageConfig = { format: "A4", marginTop: 25, marginBottom: 20, marginLeft: 30, marginRight: 20 };
+export const DEFAULT_PAGE_CONFIG: PageConfig = { format: "A4", marginTop: 30, marginBottom: 20, marginLeft: 30, marginRight: 20 };
 export const DEFAULT_STYLES: DocumentStyles = { fontFamily: "Times New Roman", fontSize: 12, lineHeight: 1.5, textAlign: "justify" };

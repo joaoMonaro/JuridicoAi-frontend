@@ -9,6 +9,7 @@ import { getAssistantCapabilities } from "@/features/ai-assistant/api";
 import { AssistantPanel } from "@/features/ai-assistant/components/assistant-panel";
 import { isAssistantShortcut } from "@/features/ai-assistant/keyboard";
 import type { AssistantCapabilities } from "@/features/ai-assistant/types";
+import { PecaModelSelect } from "@/features/pecas/components/peca-model-select";
 import { getEditorTheme, saveEditorTheme } from "@/features/pecas/editor/editor-theme";
 import type { EditorTheme } from "@/features/pecas/editor/editor-theme";
 import { EditorToolbar } from "@/features/pecas/editor/editor-toolbar";
@@ -156,6 +157,12 @@ export function LegalDocumentEditor({ peca, onChanged, onReload, focusMode, onTo
   }
 
   return <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-card">
+    <PecaModelSelect templateId={peca.templateId} disabled={autosave.state === "SALVANDO" || autosave.state === "CONFLITO"}
+      onChange={apresentacao => {
+        onChanged({ ...pecaRef.current, ...apresentacao });
+        autosave.change({ templateId: apresentacao.templateId });
+        void autosave.flush();
+      }} />
     <EditorToolbar editor={editor} theme={editorTheme} onToggleTheme={toggleEditorTheme} zoom={zoom} effectiveZoom={effectiveZoom} onZoomChange={changeZoom} focusMode={focusMode} onToggleFocusMode={onToggleFocusMode} assistantAvailable={assistantAvailable} assistantOpen={assistantOpen} onToggleAssistant={() => setAssistantOpen((current) => !current)} />
     {autosave.state === "CONFLITO" && <div className="flex items-center justify-between border-b border-warning/40 bg-warning/10 px-4 py-2 text-xs text-warning"><span>Esta peça foi alterada em outra sessão. Recarregue para evitar sobrescrever a versão mais recente.</span><Button size="sm" variant="outline" onClick={onReload}><RefreshCw />Recarregar versão mais recente</Button></div>}
     <div className="relative flex min-h-0 flex-1">
