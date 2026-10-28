@@ -2,7 +2,7 @@ import TextAlign from "@tiptap/extension-text-align";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { AlertTriangle, Check, CloudOff, LoaderCircle, RefreshCw, Save } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { getAssistantCapabilities } from "@/features/ai-assistant/api";
@@ -19,20 +19,11 @@ import { mmToPx, useDocumentPagination } from "@/features/pecas/editor/use-docum
 import { usePecaAutosave } from "@/features/pecas/hooks/use-peca-autosave";
 import type { Peca, PecaPatch } from "@/features/pecas/types";
 import { cn } from "@/lib/utils";
+import { DocumentHeader } from "./document-header";
+import { DocumentFooter } from "./document-footer";
+import { footerText } from "@/features/templates/document-footer";
 
 interface Props { peca: Peca; onChanged: (peca: Peca) => void; onReload: () => void; focusMode: boolean; onToggleFocusMode: () => void }
-
-function documentText(json: Peca["headerJson"]) {
-  const pieces: string[] = [];
-  const walk = (node: unknown) => {
-    if (!node || typeof node !== "object") return;
-    const item = node as { text?: string; content?: unknown[] };
-    if (item.text) pieces.push(item.text);
-    item.content?.forEach(walk);
-  };
-  walk(json);
-  return pieces.join(" ");
-}
 
 export function LegalDocumentEditor({ peca, onChanged, onReload, focusMode, onToggleFocusMode }: Props) {
   const [stats, setStats] = useState({ words: 0, characters: 0 });
@@ -118,11 +109,10 @@ export function LegalDocumentEditor({ peca, onChanged, onReload, focusMode, onTo
   }, [autosave.state]);
 
   const pageCount = useDocumentPagination(editor, peca.pageConfig);
-  const header = useMemo(() => documentText(peca.headerJson), [peca.headerJson]);
-  const footer = useMemo(() => documentText(peca.footerJson), [peca.footerJson]);
+  const hasFooter = Boolean(footerText(peca.footerJson).trim());
   const pageStyle = {
     width: `${mmToPx(210)}px`, minHeight: `${mmToPx(297)}px`,
-    padding: `${mmToPx(peca.pageConfig.marginTop)}px ${mmToPx(peca.pageConfig.marginRight)}px ${mmToPx(peca.pageConfig.marginBottom)}px ${mmToPx(peca.pageConfig.marginLeft)}px`,
+    padding: `${mmToPx(peca.pageConfig.marginTop)}px ${mmToPx(peca.pageConfig.marginRight)}px ${hasFooter ? 0 : mmToPx(peca.pageConfig.marginBottom)}px ${mmToPx(peca.pageConfig.marginLeft)}px`,
     fontFamily: peca.styles.fontFamily, fontSize: `${peca.styles.fontSize}pt`, lineHeight: peca.styles.lineHeight, textAlign: peca.styles.textAlign,
   } as const;
   const effectiveZoom = zoom === "fit" ? fitZoom : zoom;
@@ -170,14 +160,14 @@ export function LegalDocumentEditor({ peca, onChanged, onReload, focusMode, onTo
         <div
           data-editor-theme={editorTheme}
           className={cn(
-            "legal-editor-page relative mx-auto border shadow-xl transition-colors",
+            "legal-editor-page relative mx-auto flex flex-col border shadow-xl transition-colors",
             editorTheme === "light" ? "border-[#b7bec6] bg-white text-[#20242a]" : "border-[#33404d] bg-[#131d26] text-[#dce4eb]",
           )}
           style={{ ...pageStyle, zoom: effectiveZoom }}
         >
-          {header && <div className={cn("absolute inset-x-0 top-5 px-12 text-center text-[10px]", editorTheme === "light" ? "text-[#66717d]" : "text-muted-foreground")}>{header}</div>}
+          <DocumentHeader value={peca.headerJson} page={peca.pageConfig} dark={editorTheme === "dark"} />
           <EditorContent editor={editor} />
-          {footer && <div className={cn("absolute inset-x-0 bottom-5 px-12 text-center text-[10px]", editorTheme === "light" ? "text-[#66717d]" : "text-muted-foreground")}>{footer}</div>}
+          <DocumentFooter value={peca.footerJson} page={peca.pageConfig} />
         </div>
       </div>
       {assistantCapabilities ? <AssistantPanel
