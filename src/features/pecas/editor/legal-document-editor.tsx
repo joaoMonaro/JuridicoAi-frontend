@@ -10,6 +10,7 @@ import { AssistantPanel } from "@/features/ai-assistant/components/assistant-pan
 import { isAssistantShortcut } from "@/features/ai-assistant/keyboard";
 import type { AssistantCapabilities } from "@/features/ai-assistant/types";
 import { PecaModelSelect } from "@/features/pecas/components/peca-model-select";
+import { PecaExportButton } from "@/features/pecas/components/peca-export-button";
 import { getEditorTheme, saveEditorTheme } from "@/features/pecas/editor/editor-theme";
 import type { EditorTheme } from "@/features/pecas/editor/editor-theme";
 import { EditorToolbar } from "@/features/pecas/editor/editor-toolbar";
@@ -148,6 +149,7 @@ export function LegalDocumentEditor({ peca, onChanged, onReload, focusMode, onTo
 
   return <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-card">
     <PecaModelSelect templateId={peca.templateId} disabled={autosave.state === "SALVANDO" || autosave.state === "CONFLITO"}
+      actions={<PecaExportButton pecaId={peca.id} disabled={autosave.state === "CONFLITO"} prepareExport={autosave.prepareExport} />}
       onChange={apresentacao => {
         onChanged({ ...pecaRef.current, ...apresentacao });
         autosave.change({ templateId: apresentacao.templateId });

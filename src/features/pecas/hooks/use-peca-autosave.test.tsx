@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { atualizarPeca } from "@/features/pecas/api";
 import { DEFAULT_PAGE_CONFIG, DEFAULT_STYLES } from "@/features/pecas/types";
 import { usePecaAutosave } from "./use-peca-autosave";
+import { ApiError } from "@/lib/api-client";
 
 vi.mock("@/features/pecas/api", () => ({ atualizarPeca: vi.fn() }));
 const presentation = { templateId: "modelo", pageConfig: DEFAULT_PAGE_CONFIG, styles: DEFAULT_STYLES, headerJson: null, footerJson: null };
@@ -10,6 +11,33 @@ beforeEach(() => { vi.mocked(atualizarPeca).mockReset(); });
 afterEach(() => vi.useRealTimers());
 
 describe("troca de modelo no autosave", () => {
+  it("aguarda gravação em andamento e drena edições posteriores antes de fornecer a versão para exportar", async () => {
+    let finish!: (value: Awaited<ReturnType<typeof atualizarPeca>>) => void;
+    vi.mocked(atualizarPeca).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    vi.mocked(atualizarPeca).mockResolvedValue({ id: "peça", versao: 3, dataAtualizacao: "agora" });
+    const { result } = renderHook(() => usePecaAutosave({ pecaId: "peça", initialVersion: 1, onPersisted: vi.fn() }));
+    let exporting!: Promise<number>;
+    act(() => { result.current.change({ titulo: "Antes" }); void result.current.flush(); });
+    act(() => { result.current.change({ templateId: "modelo" }); exporting = result.current.prepareExport(); });
+    expect(atualizarPeca).toHaveBeenCalledTimes(1);
+    await act(async () => { finish({ id: "peça", versao: 2, dataAtualizacao: "agora" }); expect(await exporting).toBe(3); });
+    expect(atualizarPeca).toHaveBeenLastCalledWith("peça", 2, { templateId: "modelo" });
+    expect(result.current.state).toBe("SALVO");
+  });
+
+  it.each([new Error("Sem rede"), new ApiError("Conflito", 409)])("bloqueia exportação quando não consegue salvar: %s", async error => {
+    vi.mocked(atualizarPeca).mockRejectedValue(error);
+    const { result } = renderHook(() => usePecaAutosave({ pecaId: "peça", initialVersion: 1, onPersisted: vi.fn() }));
+    act(() => result.current.change({ titulo: "Não salvo" }));
+    await act(async () => { await expect(result.current.prepareExport()).rejects.toThrow("Não foi possível salvar"); });
+    expect(result.current.state).toBe(error instanceof ApiError ? "CONFLITO" : "ERRO");
+  });
+
+  it("exporta a versão existente sem gravar quando não há alterações", async () => {
+    const { result } = renderHook(() => usePecaAutosave({ pecaId: "peça", initialVersion: 7, onPersisted: vi.fn() }));
+    expect(await result.current.prepareExport()).toBe(7); expect(atualizarPeca).not.toHaveBeenCalled();
+  });
+
   it("salva o texto pendente junto do modelo, adota a resposta e mantém a edição durante a requisição", async () => {
     vi.useFakeTimers(); const persisted = vi.fn();
     let finish!: (value: Awaited<ReturnType<typeof atualizarPeca>>) => void;

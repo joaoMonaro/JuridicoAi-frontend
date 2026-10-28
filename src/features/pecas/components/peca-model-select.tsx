@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { listarTemplates } from "@/features/templates/api";
@@ -9,9 +10,10 @@ interface Props {
   templateId: string | null;
   disabled: boolean;
   onChange: (apresentacao: PecaApresentacao) => void;
+  actions?: ReactNode;
 }
 
-export function PecaModelSelect({ templateId, disabled, onChange }: Props) {
+export function PecaModelSelect({ templateId, disabled, onChange, actions }: Props) {
   const [models, setModels] = useState<TemplatePeca[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -46,5 +48,6 @@ export function PecaModelSelect({ templateId, disabled, onChange }: Props) {
       </select>
     </label>
     {error ? <><span role="alert" className="text-destructive">{error}</span><Button type="button" size="xs" variant="ghost" onClick={load}>Tentar novamente</Button></> : null}
+    {actions && <div className="ml-auto">{actions}</div>}
   </div>;
 }
