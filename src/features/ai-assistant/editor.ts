@@ -91,6 +91,7 @@ export function isSuggestionAnchorValid(
   editorRevision: number,
 ) {
   const { ancora, operacaoSugerida } = suggestion;
+  if (operacaoSugerida === "ProporAlteracoes") return false;
   if (ancora.revisaoEditor !== editorRevision) return false;
   if (operacaoSugerida === "ResponderNoPainel") return true;
 
@@ -142,7 +143,7 @@ function isSelectionOperation(operation: AssistantOperation) {
   return operation === "SubstituirSelecao" || operation === "InserirAposSelecao";
 }
 
-function textToTiptap(text: string): JSONContent[] {
+export function textToTiptap(text: string): JSONContent[] {
   return text.trim().split(/\n\s*\n/u).filter(Boolean).map((paragraph) => {
     const lines = paragraph.split("\n");
     const content: JSONContent[] = [];

@@ -25,6 +25,7 @@ vi.mock("@/features/ai-assistant/api", () => ({
   confirmAssistantTransparency: vi.fn(),
   getAssistantTransparency: vi.fn(),
   streamAssistantRequest: vi.fn(),
+  rejectAssistantResponse: vi.fn(),
 }));
 
 vi.mock("@/features/contextos/api", () => ({
@@ -68,7 +69,8 @@ describe("AssistantPanel", () => {
     await user.click(confirm);
 
     await waitFor(() => expect(mockedConfirmTransparency).toHaveBeenCalledWith("ai-transparency-v1"));
-    expect(await screen.findByRole("textbox", { name: "O que você quer que a IA faça?" })).toHaveFocus();
+    const composer = await screen.findByRole("textbox", { name: "O que você quer que a IA faça?" });
+    await waitFor(() => expect(composer).toHaveFocus());
     expect(screen.queryByRole("dialog", { name: "Uso de inteligência artificial" })).not.toBeInTheDocument();
   });
 

@@ -6,11 +6,16 @@ import type { PageConfig } from "@/features/pecas/types";
 const MM_TO_PX = 96 / 25.4;
 export const mmToPx = (mm: number) => mm * MM_TO_PX;
 
-export function useDocumentPagination(editor: Editor | null, pageConfig: PageConfig) {
+export function useDocumentPagination(editor: Editor | null, pageConfig: PageConfig, reviewing = false) {
   const [pageCount, setPageCount] = useState(1);
   useEffect(() => {
     if (!editor) return;
     const root = editor.view.dom;
+    // Preview widgets are outside the document and must not affect its page breaks.
+    if (reviewing) {
+      for (const node of Array.from(root.children) as HTMLElement[]) node.style.marginTop = "";
+      return;
+    }
     let frame = 0;
     const paginate = () => {
       cancelAnimationFrame(frame);
@@ -40,6 +45,6 @@ export function useDocumentPagination(editor: Editor | null, pageConfig: PageCon
     editor.on("update", paginate);
     paginate();
     return () => { cancelAnimationFrame(frame); observer.disconnect(); editor.off("update", paginate); };
-  }, [editor, pageConfig.marginBottom, pageConfig.marginTop]);
+  }, [editor, pageConfig.marginBottom, pageConfig.marginTop, reviewing]);
   return pageCount;
 }

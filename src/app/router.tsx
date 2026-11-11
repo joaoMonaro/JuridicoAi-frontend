@@ -1,3 +1,5 @@
+import { lazy, Suspense } from "react";
+
 import { useAppLocation } from "@/app/navigation";
 import { getAuthSession } from "@/features/auth/auth-session";
 import { CreateCasePage } from "@/pages/CreateCasePage";
@@ -9,12 +11,17 @@ const LOGIN_PATH = "/login";
 const CASES_PATH = "/casos";
 const CREATE_CASE_PATH = "/casos/novo";
 const CASE_WORKSPACE_PATH = /^\/casos\/([0-9a-f-]{36})(?:\/(dados))?$/i;
+const AssistantReviewSandboxPage = import.meta.env.DEV ? lazy(() => import("@/pages/AssistantReviewSandboxPage")) : null;
 
 export function AppRouter() {
   const currentLocation = useAppLocation();
   const currentUrl = new URL(currentLocation, window.location.origin);
   const currentPath = currentUrl.pathname;
   const session = getAuthSession();
+
+  if (AssistantReviewSandboxPage && currentPath === "/dev/revisao-peca") {
+    return <Suspense fallback={<p>Carregando revisão...</p>}><AssistantReviewSandboxPage /></Suspense>;
+  }
 
   if (currentPath === LOGIN_PATH) {
     if (session) {

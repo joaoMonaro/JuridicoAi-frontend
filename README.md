@@ -1,5 +1,29 @@
 # React + TypeScript + Vite
 
+## Revisão visual da Peça — E0
+
+A primeira etapa da comparação pode ser testada em `/dev/revisao-peca`, com
+`npm run dev`. Usa documento e propostas fictícios, sem chamadas à IA/API ou
+salvamento no servidor. Permite aprovar/rejeitar alterações no documento e testar
+desfazer/refazer. Disponível somente em desenvolvimento.
+
+Veja [instruções e limites desta etapa](docs/assistant-review-e0.md).
+
+## Revisão persistida no editor real
+
+O editor também consome a revisão persistida quando a API anuncia
+`suportaRevisaoPersistida`. Sugestões são salvas e revisadas antes da aprovação;
+o servidor aplica e retorna um recibo sem PATCH duplicado do autosave.
+Veja [ativação, fluxo e limites](docs/assistant-review-persistent.md).
+
+O chat também recupera mensagens e respostas quando a API anuncia
+`suportaHistorico`, usando esse histórico como contexto no backend.
+Veja [a etapa de conversa persistida](docs/assistant-conversation-history.md).
+
+Com `suportaConversaLivre`, o painel recebe pedidos naturais, prepara propostas
+diretamente na comparação e permite ajustar pendências pelo chat. A Peça só muda
+após a aprovação. Veja [conversa livre, ativação e limites](docs/assistant-free-chat.md).
+
 ## Testes automatizados
 
 Os testes unitários e de componentes usam Vitest, jsdom e React Testing

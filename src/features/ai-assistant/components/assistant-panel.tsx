@@ -8,6 +8,7 @@ import {
   confirmAssistantTransparency,
   getAssistantTransparency,
   streamAssistantRequest,
+  rejectAssistantResponse,
 } from "@/features/ai-assistant/api";
 import {
   applySuggestion,
@@ -23,12 +24,18 @@ import type {
   AssistantRequest,
   AssistantTransparency,
   DocumentContextScope,
+  AssistantSuggestion,
 } from "@/features/ai-assistant/types";
 import { listarContextos } from "@/features/contextos/api";
 import { CONTEXTO_TIPO_LABELS } from "@/features/contextos/contexto-options";
 import type { ContextoCaso } from "@/features/contextos/types";
 import type { Peca, SaveState } from "@/features/pecas/types";
 import { ApiError } from "@/lib/api-client";
+import { mergeHistory } from "../conversation-history";
+import type { ConversationTurn, RequestDraft, SelectionSnapshot } from "../conversation-history";
+import { useAssistantHistory } from "../use-assistant-history";
+import type { StoredProposal } from "../review/persistent-api";
+import { AutomaticProposalResult } from "./automatic-proposal-result";
 
 interface Props {
   open: boolean;
@@ -39,37 +46,16 @@ interface Props {
   saveState: SaveState;
   onCapabilitiesInvalidated: () => void;
   onClose: () => void;
+  onReviewSuggestion?: (suggestion: AssistantSuggestion, text: string, instruction: string) => Promise<void>;
+  ensurePersisted?: () => Promise<number>;
+  blocked?: boolean;
+  proposalReferenceId?: string;
+  currentProposal?: StoredProposal | null;
+  onPreparedProposal?: (proposal: StoredProposal) => void;
+  onOpenProposal?: (id: string) => Promise<StoredProposal>;
 }
 
-type RequestPhase = "completed" | "applied" | "rejected";
-
-type ConversationTurnStatus = "sending" | "streaming" | "completed" | "applied" | "rejected" | "cancelled" | "error";
-
-interface RequestDraft {
-  mode: AssistantMode;
-  scope: DocumentContextScope;
-  selectionSnapshot: SelectionSnapshot | null;
-  instruction: string;
-  additionalContext: string;
-  includeCaseData: boolean;
-  selectedContextIds: string[];
-}
-
-interface SelectionSnapshot {
-  from: number;
-  to: number;
-  text: string;
-  editorRevision: number;
-}
-
-interface ConversationTurn extends RequestDraft {
-  id: string;
-  status: ConversationTurnStatus;
-  streamedText: string;
-  completed: AssistantCompletedEvent | null;
-  editableText: string;
-  error: string;
-}
+type RequestPhase = "completed" | "applied" | "rejected" | "reviewing" | "historical";
 
 const modeLabels: Record<AssistantMode, string> = {
   Perguntar: "Perguntar",
@@ -91,6 +77,7 @@ const operationLabels: Record<AssistantOperation, string> = {
   InserirAposSelecao: "Inserir após a seleção",
   SubstituirSelecao: "Substituir seleção",
   CriarSecao: "Criar seção",
+  ProporAlteracoes: "Alterações propostas",
 };
 
 function captureSelection(editor: Editor, editorRevision: number): SelectionSnapshot | null {
@@ -116,7 +103,8 @@ function snapshotFromSelection(selection: SelectionSnapshot): ReturnType<typeof 
   };
 }
 
-export function AssistantPanel({ open, capabilities, editor, peca, editorRevision, saveState, onCapabilitiesInvalidated, onClose }: Props) {
+export function AssistantPanel({ open, capabilities, editor, peca, editorRevision, saveState, onCapabilitiesInvalidated, onClose, onReviewSuggestion, ensurePersisted,
+  blocked = false, proposalReferenceId, currentProposal, onPreparedProposal, onOpenProposal }: Props) {
   const [transparency, setTransparency] = useState<AssistantTransparency | null>(null);
   const [transparencyError, setTransparencyError] = useState("");
   const [confirmingTransparency, setConfirmingTransparency] = useState(false);
@@ -139,10 +127,17 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
   const requestController = useRef<AbortController | null>(null);
   const editorRevisionRef = useRef(editorRevision);
   const wasOpen = useRef(open);
+  const sending = useRef(false);
+  const preparationCancelled = useRef(false);
+  const olderScroll = useRef<{ top: number; height: number } | null>(null);
+  const [preparing, setPreparing] = useState(false);
+  const history = useAssistantHistory(open && capabilities.suportaHistorico && transparency?.confirmado === true, peca.id);
 
-  const turns = useMemo(() => conversations[peca.id] ?? [], [conversations, peca.id]);
+  const turns = useMemo(() => capabilities.suportaHistorico ? mergeHistory(history.messages, conversations[peca.id] ?? []) : conversations[peca.id] ?? [], [conversations, peca.id, capabilities.suportaHistorico, history.messages]);
   const activeTurn = activeTurnId ? turns.find((turn) => turn.id === activeTurnId) : null;
-  const busy = activeTurn?.status === "sending" || activeTurn?.status === "streaming";
+  const busy = preparing || activeTurn?.status === "sending" || activeTurn?.status === "streaming";
+  const historyBlocked = capabilities.suportaHistorico && (history.loading || Boolean(history.error) || !history.conversationId || history.generating);
+  const free = capabilities.suportaConversaLivre === true;
 
   useEffect(() => {
     if (!open || !capabilities.habilitado || transparency || transparencyError) return;
@@ -168,7 +163,7 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
     return () => controller.abort();
   }, [open, transparency?.confirmado, contexts, contextsError, peca.casoId]);
 
-  useEffect(() => () => requestController.current?.abort(), []);
+  useEffect(() => () => { preparationCancelled.current = true; requestController.current?.abort(); }, []);
 
   useEffect(() => {
     editorRevisionRef.current = editorRevision;
@@ -211,7 +206,10 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
     const list = messageListRef.current;
     if (!open || !list) return;
     const frame = requestAnimationFrame(() => {
-      list.scrollTop = list.scrollHeight;
+      if (olderScroll.current) {
+        list.scrollTop = olderScroll.current.top + list.scrollHeight - olderScroll.current.height;
+        olderScroll.current = null;
+      } else list.scrollTop = list.scrollHeight;
     });
     return () => cancelAnimationFrame(frame);
   }, [open, turns]);
@@ -221,7 +219,7 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
-      if (busy) requestController.current?.abort();
+      if (busy) { preparationCancelled.current = true; requestController.current?.abort(); }
       else onClose();
     };
     window.addEventListener("keydown", handleEscape);
@@ -280,7 +278,7 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
   }
 
   async function submit(draftOverride?: RequestDraft) {
-    const draft: RequestDraft = draftOverride ?? {
+    let draft: RequestDraft = draftOverride ?? {
       mode,
       scope,
       selectionSnapshot,
@@ -289,7 +287,11 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
       includeCaseData,
       selectedContextIds,
     };
-    if (!editor || !capabilities.habilitado || !capabilities.modos.includes(draft.mode) || !draft.instruction.trim() || busy) return;
+    if (free) {
+      const focus = draft.selectionSnapshot?.editorRevision === editorRevision ? draft.selectionSnapshot : null;
+      draft = { ...draft, mode: "Perguntar", scope: focus ? "Selecao" : "Nenhum", selectionSnapshot: focus };
+    }
+    if (!editor || !capabilities.habilitado || !capabilities.modos.includes(draft.mode) || !draft.instruction.trim() || busy || sending.current || historyBlocked || blocked) return;
     setComposerError("");
     let snapshot: ReturnType<typeof captureEditorContext>;
     try {
@@ -311,12 +313,28 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
       return;
     }
 
+    let version = peca.versao;
+    if (capabilities.suportaHistorico) {
+      sending.current = true; setPreparing(true);
+      preparationCancelled.current = false;
+      const source = editor.state.doc;
+      try {
+        if (!ensurePersisted) throw new Error("Sincronização da Peça indisponível.");
+        version = await ensurePersisted();
+        if (preparationCancelled.current) throw new Error("Envio cancelado. O texto do pedido foi preservado.");
+        if (!source.eq(editor.state.doc)) throw new Error("A Peça mudou durante a sincronização. Confira o pedido antes de enviar.");
+      } catch (failure) {
+        setComposerError(failure instanceof Error ? failure.message : "Não foi possível sincronizar a Peça.");
+        sending.current = false; setPreparing(false); return;
+      }
+      setPreparing(false);
+    }
     const clientRequestId = crypto.randomUUID();
     const request: AssistantRequest = {
       clientRequestId,
       modo: draft.mode,
       instrucao: draft.instruction.trim(),
-      versaoPeca: peca.versao,
+      versaoPeca: version,
       operacaoPreferida: preferredOperation(draft.mode, snapshot),
       contexto: {
         documento: {
@@ -342,6 +360,8 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
       instruction: draft.instruction.trim(),
       selectedContextIds: [...draft.selectedContextIds],
       id: clientRequestId,
+      automaticContext: capabilities.suportaHistorico,
+      automaticIntent: free,
       status: "sending",
       streamedText: "",
       completed: null,
@@ -367,16 +387,18 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
         onCompleted: (event) => {
           updateTurn(clientRequestId, (current) => ({
             ...current,
-            status: "completed",
+            status: event.proposta ? "reviewing" : "completed",
             completed: event,
             editableText: event.sugestao.texto,
           }));
+          if (event.proposta) onPreparedProposal?.(event.proposta);
           if (!draftOverride) {
             setInstruction("");
             setAdditionalContext("");
           }
         },
-      }, controller.signal);
+      }, controller.signal, capabilities.suportaHistorico ? history.conversationId : undefined,
+      free ? { propostaReferenciadaId: proposalReferenceId } : undefined);
     } catch (requestError) {
       if (requestError instanceof Error && requestError.name === "AbortError") {
         updateTurn(clientRequestId, (current) => ({
@@ -400,6 +422,8 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
         }));
       }
     } finally {
+      sending.current = false;
+      if (capabilities.suportaHistorico) void history.refresh();
       if (requestController.current === controller) requestController.current = null;
       setActiveTurnId((current) => current === clientRequestId ? null : current);
       requestAnimationFrame(() => instructionRef.current?.focus());
@@ -407,22 +431,42 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
   }
 
   function cancel() {
+    preparationCancelled.current = true;
     requestController.current?.abort();
   }
 
   function close() {
+    preparationCancelled.current = true;
     requestController.current?.abort();
     onClose();
   }
 
-  function reject(turnId: string) {
+  async function reject(turnId: string) {
+    const turn = turns.find((item) => item.id === turnId);
+    if (capabilities.suportaHistorico && history.conversationId && turn?.completed?.sugestao.mensagemUsuarioId) {
+      try { await rejectAssistantResponse(history.conversationId, turn.completed.sugestao.mensagemUsuarioId); }
+      catch (failure) {
+        updateTurn(turnId, (current) => ({ ...current, error: failure instanceof Error ? failure.message : "Não foi possível registrar a rejeição." }));
+        return;
+      }
+      void history.refresh();
+    }
     updateTurn(turnId, (turn) => ({ ...turn, status: "rejected" }));
   }
 
-  function apply(turnId: string) {
+  async function apply(turnId: string) {
     const turn = turns.find((item) => item.id === turnId);
     const suggestion = turn?.completed?.sugestao;
     if (!editor || !turn || !suggestion || turn.status === "applied") return;
+    if (onReviewSuggestion) {
+      try {
+        await onReviewSuggestion(suggestion, turn.editableText, turn.instruction);
+        updateTurn(turnId, (current) => ({ ...current, status: "reviewing", error: "" }));
+      } catch (failure) {
+        updateTurn(turnId, (current) => ({ ...current, error: failure instanceof Error ? failure.message : "Não foi possível preparar a revisão." }));
+      }
+      return;
+    }
     if (applySuggestion(editor, suggestion, turn.editableText, editorRevision, saveState)) {
       updateTurn(turnId, (current) => ({ ...current, status: "applied" }));
     } else {
@@ -430,6 +474,17 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
         ...current,
         error: "Não foi possível aplicar a sugestão no destino original.",
       }));
+    }
+  }
+
+  async function openProposal(turnId: string) {
+    const proposal = turns.find((turn) => turn.id === turnId)?.completed?.proposta;
+    if (!proposal || !onOpenProposal) return;
+    try {
+      const current = await onOpenProposal(proposal.id);
+      updateTurn(turnId, (turn) => ({ ...turn, completed: turn.completed ? { ...turn.completed, proposta: current } : null, error: "" }));
+    } catch (failure) {
+      updateTurn(turnId, (turn) => ({ ...turn, error: failure instanceof Error ? failure.message : "Não foi possível recuperar a proposta." }));
     }
   }
 
@@ -506,6 +561,16 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
     <div ref={messageListRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-4" role="log" aria-label="Conversa com o assistente" aria-live="polite" aria-busy={busy}>
       {capabilities.habilitado && !transparency && !transparencyError ? <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><LoaderCircle className="animate-spin" />Consultando disponibilidade...</div> : null}
       {transparencyError && !transparency ? <div><ErrorBox message={transparencyError} /><Button type="button" size="sm" variant="outline" className="mt-2" onClick={() => setTransparencyError("")}><RotateCcw />Tentar novamente</Button></div> : null}
+      {capabilities.suportaHistorico && transparency?.confirmado ? <div className="mb-4 space-y-2 text-xs text-muted-foreground">
+        <p>Conversa individual salva. A IA recebe o histórico disponível e a versão atual da Peça.</p>
+        {history.loading ? <p role="status">Carregando conversa...</p> : null}
+        {history.error ? <><ErrorBox message={history.error} /><Button size="sm" variant="outline" onClick={() => { void history.refresh(); }}>Recuperar conversa</Button></> : null}
+        {history.hasOlder ? <Button size="sm" variant="outline" disabled={history.loading} onClick={() => {
+          const list = messageListRef.current;
+          if (list) olderScroll.current = { top: list.scrollTop, height: list.scrollHeight };
+          void history.loadOlder();
+        }}>Carregar mensagens anteriores</Button> : null}
+      </div> : null}
 
       {capabilities.habilitado && transparency?.confirmado && turns.length === 0 ? <ConversationEmptyState /> : null}
       {capabilities.habilitado && transparency?.confirmado ? <div className="space-y-5">
@@ -518,18 +583,21 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
           saveState={saveState}
           canDevelop={canDraft}
           onTextChange={(value) => updateTurn(turn.id, (current) => ({ ...current, editableText: value }))}
-          onApply={() => apply(turn.id)}
-          onReject={() => reject(turn.id)}
+          onApply={() => { void apply(turn.id); }}
+          reviewInDocument={Boolean(onReviewSuggestion)}
+          onReject={() => { void reject(turn.id); }}
           onRetry={() => void submit(turn)}
           onCopy={() => void copySuggestion(turn.id)}
           onDevelop={developFinding}
+          currentProposal={currentProposal}
+          onOpenProposal={() => { void openProposal(turn.id); }}
         />)}
       </div> : null}
     </div>
 
     {capabilities.habilitado && transparency?.confirmado ? <footer className="shrink-0 border-t bg-card p-3">
       {composerError ? <div className="mb-2"><ErrorBox message={composerError} /></div> : null}
-      {mode !== "Perguntar" ? <div className="mb-2 flex items-center gap-1.5">
+      {!free && mode !== "Perguntar" ? <div className="mb-2 flex items-center gap-1.5">
         <span className="inline-flex items-center gap-1 rounded-full border border-primary/25 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary">{modeLabels[mode]}<button type="button" className="rounded-full p-0.5 hover:bg-primary/10" onClick={() => changeMode("Perguntar")} aria-label={`Remover ação ${modeLabels[mode]}`}><X className="size-3" /></button></span>
       </div> : null}
       {scope !== "Nenhum" || includeCaseData || selectedContextIds.length > 0 || additionalContext ? <div className="mb-2 flex flex-wrap gap-1.5" aria-label="Contextos do próximo pedido">
@@ -551,7 +619,7 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
           ref={instructionRef}
           className="min-h-20 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0"
           value={instruction}
-          disabled={busy}
+          disabled={busy || historyBlocked || blocked}
           maxLength={capabilities.limites.instrucaoCaracteres}
           onChange={(event) => setInstruction(event.target.value)}
           onKeyDown={(event) => {
@@ -566,18 +634,22 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
           <details className="relative">
             <summary className="cursor-pointer list-none rounded-md px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground">+ Adicionar contexto</summary>
             <div className="absolute bottom-8 left-0 z-20 w-80 max-w-[calc(100vw-2rem)] rounded-lg border bg-popover p-3 shadow-xl">
-              <label className="text-xs font-medium">Trecho da Peça<select className="mt-1 h-8 w-full rounded-md border bg-background px-2 text-xs" value={scope} disabled={busy} onChange={(event) => selectDocumentScope(event.target.value as DocumentContextScope)}>{Object.entries(scopeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+              {free ? <p className="text-xs text-muted-foreground">A Peça atual e a conversa já estão no contexto. Selecione um trecho no editor se quiser dar foco ao pedido.</p> : <label className="text-xs font-medium">{capabilities.suportaHistorico ? "Foco do pedido" : "Trecho da Peça"}<select className="mt-1 h-8 w-full rounded-md border bg-background px-2 text-xs" value={scope} disabled={busy} onChange={(event) => selectDocumentScope(event.target.value as DocumentContextScope)}>{Object.entries(scopeLabels).map(([value, label]) => <option key={value} value={value}>{value === "Nenhum" && capabilities.suportaHistorico ? "Peça atual e conversa" : label}</option>)}</select></label>}
               <label className="mt-3 flex items-start gap-2 text-xs"><input type="checkbox" className="mt-0.5 accent-primary" checked={includeCaseData} disabled={busy} onChange={(event) => setIncludeCaseData(event.target.checked)} /><span><span className="font-medium">Incluir dados do caso</span><span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">Envia somente os dados essenciais. Documentos pessoais não são incluídos.</span></span></label>
               {contexts?.length ? <fieldset className="mt-3"><legend className="text-[11px] font-medium">Contextos cadastrados</legend><div className="mt-1.5 max-h-32 space-y-1 overflow-y-auto">{contexts.map((item) => <label key={item.id} className="flex items-start gap-2 rounded px-1 py-1 text-xs hover:bg-muted"><input type="checkbox" className="mt-0.5 accent-primary" checked={selectedContextIds.includes(item.id)} disabled={busy} onChange={() => toggleContext(item.id)} /><span className="min-w-0"><span className="block truncate">{item.titulo || CONTEXTO_TIPO_LABELS[item.tipo]}</span><span className="text-[10px] text-muted-foreground">{CONTEXTO_TIPO_LABELS[item.tipo]}</span></span></label>)}</div></fieldset> : null}
               {contextsError ? <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-destructive"><span>{contextsError}</span><Button type="button" size="xs" variant="outline" onClick={() => setContextsError("")}><RotateCcw />Tentar novamente</Button></div> : null}
               <label className="mt-3 block text-[11px] font-medium">Informação apenas para este pedido<Textarea className="mt-1 min-h-20 text-xs" value={additionalContext} disabled={busy} maxLength={capabilities.limites.contextoAdicionalCaracteres} onChange={(event) => setAdditionalContext(event.target.value)} placeholder="Fatos ou instruções que não devem entrar automaticamente na Peça." /></label>
             </div>
           </details>
-          <span className="text-[10px] text-muted-foreground">{scopeLabels[scope]}</span>
-          {busy ? <Button type="button" size="icon-sm" variant="outline" onClick={cancel} aria-label="Cancelar"><Square className="size-3 fill-current" /></Button> : <Button type="button" size="icon-sm" disabled={!editor || !instruction.trim()} onClick={() => void submit()} aria-label="Enviar para IA"><Send /></Button>}
+          <span className="text-[10px] text-muted-foreground">{scope === "Nenhum" && capabilities.suportaHistorico ? "Peça atual e conversa" : scopeLabels[scope]}</span>
+          {busy ? <Button type="button" size="icon-sm" variant="outline" onClick={cancel} aria-label="Cancelar"><Square className="size-3 fill-current" /></Button> : <Button type="button" size="icon-sm" disabled={!editor || !instruction.trim() || historyBlocked || blocked} onClick={() => void submit()} aria-label="Enviar para IA"><Send /></Button>}
         </div>
       </div>
-      {canRewrite || canReview || canDraft ? <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Ações rápidas">
+      {free ? <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Sugestões de pedidos">
+        {capabilities.features?.includes("AI_DOCUMENT_GENERATION") ? <Button type="button" size="xs" variant="ghost" disabled={busy || blocked} onClick={() => setInstruction("Gere uma minuta inicial com os fatos disponíveis nesta conversa.")}>Criar minuta</Button> : null}
+        {canDraft ? <Button type="button" size="xs" variant="ghost" disabled={busy || blocked} onClick={() => setInstruction(selectionSnapshot ? "Melhore o trecho selecionado, preservando os fatos e o sentido jurídico." : "Melhore a redação da Peça, preservando os fatos e o sentido jurídico.")}>Melhorar redação</Button> : null}
+        <Button type="button" size="xs" variant="ghost" disabled={busy || blocked} onClick={() => setInstruction(selectionSnapshot ? "Explique o trecho selecionado de forma clara." : "Explique os principais pontos da Peça de forma clara.")}>Explicar trecho</Button>
+      </div> : canRewrite || canReview || canDraft ? <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Ações rápidas">
         {canRewrite ? <><Button type="button" size="xs" variant="ghost" onClick={() => quickAction("Reescrever", "Reescreva o trecho preservando o sentido jurídico e os fatos.", "Selecao")}>Reescrever</Button><Button type="button" size="xs" variant="ghost" onClick={() => quickAction("Reescrever", "Expanda o trecho com maior clareza e fundamentação, sem inventar fatos.", "Selecao")}>Expandir</Button></> : null}
         {canReview ? <Button type="button" size="xs" variant="ghost" onClick={() => quickAction("Revisar", "Identifique lacunas, contradições e melhorias possíveis nesta parte da Peça.")}>Revisar</Button> : null}
         {canDraft ? <Button type="button" size="xs" variant="ghost" onClick={() => quickAction("Redigir", "Redija um novo trecho jurídico conforme o contexto informado.")}>Novo trecho</Button> : null}
@@ -617,21 +689,24 @@ interface ConversationTurnProps {
   editorRevision: number;
   saveState: SaveState;
   canDevelop: boolean;
+  reviewInDocument: boolean;
   onTextChange: (value: string) => void;
   onApply: () => void;
   onReject: () => void;
   onRetry: () => void;
   onCopy: () => void;
   onDevelop: (title: string, description: string) => void;
+  currentProposal?: StoredProposal | null;
+  onOpenProposal: () => void;
 }
 
-function ConversationTurnView({ turn, contexts, editor, editorRevision, saveState, canDevelop, onTextChange, onApply, onReject, onRetry, onCopy, onDevelop }: ConversationTurnProps) {
+function ConversationTurnView({ turn, contexts, editor, editorRevision, saveState, canDevelop, reviewInDocument, onTextChange, onApply, onReject, onRetry, onCopy, onDevelop, currentProposal, onOpenProposal }: ConversationTurnProps) {
   const suggestion = turn.completed?.sugestao ?? null;
   const anchorValid = useMemo(
     () => Boolean(editor && suggestion && isSuggestionAnchorValid(editor, suggestion, editorRevision)),
     [editor, suggestion, editorRevision],
   );
-  const canApply = Boolean(editor && suggestion && turn.status === "completed" &&
+  const canApply = Boolean(!turn.historical && editor && suggestion && turn.status === "completed" &&
     canApplySuggestion(editor, suggestion, turn.editableText, editorRevision, saveState));
   const selectedContexts = turn.selectedContextIds
     .map((id) => contexts.find((context) => context.id === id))
@@ -641,7 +716,7 @@ function ConversationTurnView({ turn, contexts, editor, editorRevision, saveStat
     <div className="ml-auto max-w-[88%] rounded-2xl rounded-br-sm bg-primary px-3 py-2.5 text-primary-foreground">
       <p className="whitespace-pre-wrap text-sm leading-5">{turn.instruction}</p>
       <details className="mt-1.5 text-[10px] opacity-80">
-        <summary className="cursor-pointer">{modeLabels[turn.mode]} · {turn.scope === "Selecao" && turn.selectionSnapshot ? `Seleção · ${turn.selectionSnapshot.text.length} caracteres` : scopeLabels[turn.scope]}</summary>
+        <summary className="cursor-pointer">{turn.automaticIntent ? "Conversa" : modeLabels[turn.mode]} · {turn.scope === "Selecao" && turn.selectionSnapshot ? `Seleção · ${turn.selectionSnapshot.text.length} caracteres` : turn.scope === "Nenhum" && turn.automaticContext ? "Peça atual e conversa" : scopeLabels[turn.scope]}</summary>
         <ul className="mt-1 space-y-0.5">
           {turn.includeCaseData ? <li>Dados essenciais do Caso</li> : null}
           {selectedContexts.map((context) => <li key={context.id}>{context.titulo || CONTEXTO_TIPO_LABELS[context.tipo]}</li>)}
@@ -656,13 +731,18 @@ function ConversationTurnView({ turn, contexts, editor, editorRevision, saveStat
         {turn.streamedText ? <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{turn.streamedText}</p> : null}
       </> : null}
       {turn.status === "cancelled" || turn.status === "error" ? <ErrorBox message={turn.error} /> : null}
+      {turn.historical && (turn.status === "cancelled" || turn.status === "error") ? <Button size="sm" variant="outline" onClick={onRetry}>Reenviar pedido</Button> : null}
+      {turn.historical && !turn.completed && turn.status === "completed" ? <p className="whitespace-pre-wrap text-sm leading-6">{turn.streamedText}</p> : null}
       {turn.error && turn.status !== "cancelled" && turn.status !== "error" ? <div className="mb-3"><ErrorBox message={turn.error} /></div> : null}
       {turn.completed && suggestion ? <>
         <p role="status" className="sr-only">Resposta da IA concluída.</p>
-        <SuggestionResult
+        {turn.completed.proposta ? <AutomaticProposalResult completed={turn.completed}
+          proposal={currentProposal?.id === turn.completed.proposta.id ? currentProposal : turn.completed.proposta}
+          knownCurrent={!turn.historical || currentProposal?.id === turn.completed.proposta.id} onOpen={onOpenProposal} /> : <SuggestionResult
           completed={turn.completed}
           editableText={turn.editableText}
-          phase={turn.status === "applied" ? "applied" : turn.status === "rejected" ? "rejected" : "completed"}
+          phase={turn.status === "rejected" ? "rejected" : turn.historical ? "historical" : turn.status === "applied" ? "applied" : turn.status === "reviewing" ? "reviewing" : "completed"}
+          reviewInDocument={reviewInDocument}
           anchorValid={anchorValid}
           canApply={canApply}
           saveState={saveState}
@@ -673,7 +753,7 @@ function ConversationTurnView({ turn, contexts, editor, editorRevision, saveStat
           onCopy={onCopy}
           onDevelop={onDevelop}
           canDevelop={canDevelop}
-        />
+        />}
       </> : null}
     </div>
   </article>;
@@ -783,9 +863,10 @@ interface ResultProps {
   onCopy: () => void;
   onDevelop: (title: string, description: string) => void;
   canDevelop: boolean;
+  reviewInDocument: boolean;
 }
 
-function SuggestionResult({ completed, editableText, phase, anchorValid, canApply, saveState, onTextChange, onApply, onReject, onRetry, onCopy, onDevelop, canDevelop }: ResultProps) {
+function SuggestionResult({ completed, editableText, phase, anchorValid, canApply, saveState, onTextChange, onApply, onReject, onRetry, onCopy, onDevelop, canDevelop, reviewInDocument }: ResultProps) {
   const { sugestao } = completed;
   const canWrite = sugestao.operacaoSugerida !== "ResponderNoPainel";
   const saveBlockingMessage = saveState === "SALVO" ? null
@@ -796,7 +877,7 @@ function SuggestionResult({ completed, editableText, phase, anchorValid, canAppl
     <div className="flex items-start gap-2"><span className="grid size-7 shrink-0 place-items-center rounded-md bg-primary/15 text-primary"><WandSparkles className="size-4" /></span><div className="min-w-0"><h3 className="text-sm font-semibold">{sugestao.titulo || "Sugestão da IA"}</h3><p className="mt-0.5 text-[10px] text-muted-foreground">{operationLabels[sugestao.operacaoSugerida]} · {completed.modelo}</p></div></div>
     {sugestao.resumo ? <p className="mt-3 text-xs leading-5 text-muted-foreground">{sugestao.resumo}</p> : null}
 
-    {sugestao.operacaoSugerida === "SubstituirSelecao" && sugestao.ancora.textoOriginal ? <div className="mt-3 grid gap-2"><details className="rounded-md border bg-muted/30 p-2.5"><summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Ver texto original</summary><p className="mt-2 whitespace-pre-wrap text-xs leading-5">{sugestao.ancora.textoOriginal}</p></details><div className="rounded-md border border-success/25 bg-success/5 p-2.5"><p className="text-[10px] font-semibold uppercase tracking-wide text-success">Alteração sugerida</p><Textarea aria-label="Texto proposto pela IA" className="mt-1 min-h-32 bg-transparent text-xs leading-5" value={editableText} disabled={phase === "applied" || phase === "rejected"} onChange={(event) => onTextChange(event.target.value)} /></div></div> : canWrite ? <Textarea aria-label="Texto sugerido" className="mt-3 min-h-40 text-xs leading-5" value={editableText} disabled={phase === "applied" || phase === "rejected"} onChange={(event) => onTextChange(event.target.value)} /> : <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{editableText}</p>}
+    {sugestao.operacaoSugerida === "SubstituirSelecao" && sugestao.ancora.textoOriginal ? <div className="mt-3 grid gap-2"><details className="rounded-md border bg-muted/30 p-2.5"><summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Ver texto original</summary><p className="mt-2 whitespace-pre-wrap text-xs leading-5">{sugestao.ancora.textoOriginal}</p></details><div className="rounded-md border border-success/25 bg-success/5 p-2.5"><p className="text-[10px] font-semibold uppercase tracking-wide text-success">Alteração sugerida</p><Textarea aria-label="Texto proposto pela IA" className="mt-1 min-h-32 bg-transparent text-xs leading-5" value={editableText} disabled={phase !== "completed"} onChange={(event) => onTextChange(event.target.value)} /></div></div> : canWrite ? <Textarea aria-label="Texto sugerido" className="mt-3 min-h-40 text-xs leading-5" value={editableText} disabled={phase !== "completed"} onChange={(event) => onTextChange(event.target.value)} /> : <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{editableText}</p>}
 
     {sugestao.achados.length ? <div className="mt-3 space-y-2"><h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Pontos encontrados</h4>{sugestao.achados.map((finding) => <article key={finding.id} className="rounded-md border bg-background/50 p-2.5"><div className="flex items-start justify-between gap-2"><div><span className="text-[10px] font-medium text-primary">{finding.categoria}</span><h5 className="mt-0.5 text-xs font-semibold">{finding.titulo}</h5></div>{canDevelop ? <Button type="button" size="xs" variant="outline" onClick={() => onDevelop(finding.titulo, finding.descricao)}>Desenvolver</Button> : null}</div><p className="mt-1 text-xs leading-5 text-muted-foreground">{finding.descricao}</p></article>)}</div> : null}
 
@@ -804,14 +885,16 @@ function SuggestionResult({ completed, editableText, phase, anchorValid, canAppl
 
     {canWrite && !anchorValid && phase !== "applied" ? <div className="mt-3 flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 p-2.5 text-xs text-warning"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" /><span>O documento mudou desde o envio. A aplicação no destino original foi bloqueada; gere novamente a sugestão.</span></div> : null}
     {canWrite && saveBlockingMessage && phase !== "applied" ? <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-2.5 text-xs text-destructive"><CircleAlert className="mt-0.5 size-3.5 shrink-0" />{saveBlockingMessage}</div> : null}
+    {phase === "historical" ? <p className="mt-3 text-xs text-muted-foreground">Resposta do histórico. Para editar a Peça atual, faça um novo pedido ou abra uma proposta salva.</p> : null}
+    {phase === "reviewing" ? <p role="status" className="mt-3 text-xs text-muted-foreground">Proposta salva. Revise as alterações no documento para aprovar ou rejeitar.</p> : null}
     {phase === "applied" ? <div className="mt-3 flex items-center gap-2 rounded-md border border-success/30 bg-success/10 p-2.5 text-xs text-success"><Check className="size-3.5" />Sugestão aplicada. Você ainda pode desfazer no editor.</div> : null}
     {phase === "rejected" ? <div className="mt-3 flex items-center gap-2 rounded-md border bg-muted/50 p-2.5 text-xs text-muted-foreground"><X className="size-3.5" />Sugestão rejeitada. A Peça não foi alterada.</div> : null}
 
     <div className="mt-3 flex flex-wrap gap-1.5">
-      {canWrite ? <Button type="button" size="sm" disabled={!canApply} onClick={onApply}><ShieldCheck />{operationLabels[sugestao.operacaoSugerida]}</Button> : null}
+      {canWrite ? <Button type="button" size="sm" disabled={!canApply} onClick={onApply}><ShieldCheck />{reviewInDocument ? "Revisar no documento" : operationLabels[sugestao.operacaoSugerida]}</Button> : null}
       <Button type="button" size="sm" variant="outline" onClick={onCopy} disabled={!editableText}><Copy />Copiar</Button>
       <Button type="button" size="sm" variant="ghost" onClick={onRetry}><RotateCcw />Tentar novamente</Button>
-      <Button type="button" size="sm" variant="ghost" onClick={onReject} disabled={phase === "rejected" || phase === "applied"}>Rejeitar</Button>
+      <Button type="button" size="sm" variant="ghost" onClick={onReject} disabled={phase !== "completed"}>Rejeitar</Button>
     </div>
   </section>;
 }

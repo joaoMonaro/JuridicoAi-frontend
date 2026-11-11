@@ -1,0 +1,61 @@
+.assistant-review-removed {
+  background: #ffe5e5;
+  color: #8b1d2c;
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+}
+.assistant-review-removed-block {
+  border-left: 3px solid #b42338;
+  background: #fff0f0;
+  text-decoration: line-through;
+}
+.assistant-review-format { outline: 1px dashed #b46c12; outline-offset: 3px; }
+.assistant-review-preview {
+  margin: 12px 0 20px;
+  padding: 12px 16px;
+  border: 1px solid #a2b6ca;
+  border-left: 4px solid #49718f;
+  border-radius: 6px;
+  background: #f5f8fb;
+  color: #1e293b;
+  font: 14px/1.65 system-ui, sans-serif;
+  text-decoration: none;
+  white-space: normal;
+}
+.assistant-review-preview.is-active { outline: 2px solid #17698a; outline-offset: 3px; }
+.assistant-review-preview .assistant-review-label {
+  margin: 0 0 8px;
+  color: #344e65;
+  font: 600 12px/1.5 system-ui, sans-serif;
+}
+.assistant-review-proposed-content { font: 16px/1.7 "Times New Roman", serif; }
+.assistant-review-proposed-content p { margin: 0.45em 0; }
+.assistant-review-proposed-content ul { list-style: disc; padding-left: 1.5em; }
+.assistant-review-proposed-content ol { list-style: decimal; padding-left: 1.5em; }
+.assistant-review-proposed-content h2 { font-size: 1.2em; font-weight: 700; }
+.assistant-review-proposed-content a { color: #175b8a; text-decoration: underline; }
+.assistant-review-added, .assistant-review-added-block {
+  background: #dcf5e7;
+  color: #14532d;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+.assistant-review-preview .assistant-review-explanation {
+  margin: 10px 0 0;
+  color: #405366;
+  font: 12px/1.6 system-ui, sans-serif;
+}
+.assistant-review-actions { display: flex; gap: 8px; margin-top: 12px; }
+.assistant-review-actions button {
+  min-height: 34px;
+  padding: 4px 12px;
+  border: 1px solid #56718c;
+  border-radius: 5px;
+  background: #fff;
+  color: #243b53;
+  cursor: pointer;
+  font: 600 12px/1.5 system-ui, sans-serif;
+}
+.assistant-review-actions button:focus-visible { outline: 3px solid #17698a; outline-offset: 2px; }
+.assistant-review-actions button:hover { background: #e4eef5; }

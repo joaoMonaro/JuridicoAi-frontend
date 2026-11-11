@@ -1,5 +1,5 @@
 export type AssistantMode = "Perguntar" | "Redigir" | "Reescrever" | "Revisar";
-export type AssistantOperation = "ResponderNoPainel" | "InserirNoCursor" | "InserirAposSelecao" | "SubstituirSelecao" | "CriarSecao";
+export type AssistantOperation = "ResponderNoPainel" | "InserirNoCursor" | "InserirAposSelecao" | "SubstituirSelecao" | "CriarSecao" | "ProporAlteracoes";
 export type DocumentContextScope = "Nenhum" | "Selecao" | "SecaoAtual" | "DocumentoCompleto";
 export type FindingCategory = "Lacuna" | "Contradicao" | "Clareza" | "Estrutura" | "Verificacao";
 
@@ -14,6 +14,8 @@ export interface AssistantCapabilities {
   };
   suportaStreaming: boolean;
   suportaHistorico: boolean;
+  suportaRevisaoPersistida?: boolean;
+  suportaConversaLivre?: boolean;
 }
 
 export interface AssistantTransparency {
@@ -40,6 +42,8 @@ export interface EditorRequestSnapshot {
 }
 
 export interface AssistantRequest {
+  interacaoAutomatica?: boolean;
+  propostaReferenciadaId?: string | null;
   clientRequestId: string;
   modo: AssistantMode;
   instrucao: string;
@@ -78,6 +82,7 @@ export interface AssistantFinding {
 }
 
 export interface AssistantSuggestion {
+  mensagemUsuarioId?: string | null;
   id: string;
   modo: AssistantMode;
   operacaoSugerida: AssistantOperation;
@@ -96,6 +101,7 @@ export interface AssistantSuggestion {
 }
 
 export interface AssistantCompletedEvent {
+  proposta?: import("./review/persistent-api").StoredProposal | null;
   sugestao: AssistantSuggestion;
   uso: {
     entradaTokens: number | null;

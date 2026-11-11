@@ -20,16 +20,27 @@ export const confirmAssistantTransparency = (version: string, signal?: AbortSign
     signal,
   });
 
+export const rejectAssistantResponse = (conversationId: string, userMessageId: string) =>
+  apiRequest<void>(`/assistente/v2/conversas/${conversationId}/mensagens/${userMessageId}/rejeicao`, { method: "POST" });
+
 export async function streamAssistantRequest(
   pecaId: string,
   request: AssistantRequest,
   handlers: AssistantStreamHandlers,
   signal: AbortSignal,
+  conversationId?: string | null,
+  free?: { propostaReferenciadaId?: string | null },
 ) {
-  const response = await apiFetch(`/pecas/${pecaId}/assistente/solicitacoes`, {
+  const path = conversationId ? `/assistente/v2/conversas/${conversationId}/${free ? "interacoes" : "mensagens"}` : `/pecas/${pecaId}/assistente/solicitacoes`;
+  const body = free ? {
+    clientRequestId: request.clientRequestId, texto: request.instrucao, versaoPecaEsperada: request.versaoPeca,
+    selecao: request.contexto.documento.selecao, propostaReferenciadaId: free.propostaReferenciadaId ?? null,
+    contextoAdicional: request.contexto.contextoAdicional, incluirDadosCaso: request.contexto.incluirDadosCaso, contextoCasoIds: request.contexto.contextoCasoIds,
+  } : request;
+  const response = await apiFetch(path, {
     method: "POST",
     headers: { Accept: "text/event-stream" },
-    body: JSON.stringify(request),
+    body: JSON.stringify(body),
     signal,
   });
   if (!response.body) throw new ApiError("O servidor não iniciou o fluxo da IA.", response.status);

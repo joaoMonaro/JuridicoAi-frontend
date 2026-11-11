@@ -11,6 +11,28 @@ beforeEach(() => { vi.mocked(atualizarPeca).mockReset(); });
 afterEach(() => vi.useRealTimers());
 
 describe("troca de modelo no autosave", () => {
+  it("adota commit externo sem PATCH duplicado e salva o undo na versão seguinte", async () => {
+    const persisted = vi.fn();
+    const { result } = renderHook(() => usePecaAutosave({ pecaId: "peça", initialVersion: 7, onPersisted: persisted }));
+    const content = { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Aprovado" }] }] };
+    act(() => result.current.beginExternalCommit());
+    await act(async () => { expect(await result.current.ensurePersisted()).toBe(7); });
+    act(() => { result.current.adoptExternalCommit(8, "agora", content); result.current.endExternalCommit(); });
+    expect(atualizarPeca).not.toHaveBeenCalled();
+    expect(persisted).toHaveBeenCalledWith(8, "agora", { conteudoJson: content });
+    vi.mocked(atualizarPeca).mockResolvedValue({ id: "peça", versao: 9, dataAtualizacao: "depois" });
+    act(() => result.current.contentChanged({ type: "doc", content: [{ type: "paragraph" }] }));
+    await act(async () => { await result.current.flush(); });
+    expect(atualizarPeca).toHaveBeenCalledTimes(1);
+    expect(atualizarPeca).toHaveBeenCalledWith("peça", 8, { conteudoJson: { type: "doc", content: [{ type: "paragraph" }] } });
+  });
+
+  it("recusa adoção de commit externo enquanto há edição pendente ou versão inesperada", () => {
+    const { result } = renderHook(() => usePecaAutosave({ pecaId: "peça", initialVersion: 7, onPersisted: vi.fn() }));
+    act(() => { result.current.change({ titulo: "Pendente" }); result.current.beginExternalCommit(); });
+    expect(() => result.current.adoptExternalCommit(8, "agora", { type: "doc" })).toThrow("reconciliar");
+    expect(atualizarPeca).not.toHaveBeenCalled();
+  });
   it("aguarda gravação em andamento e drena edições posteriores antes de fornecer a versão para exportar", async () => {
     let finish!: (value: Awaited<ReturnType<typeof atualizarPeca>>) => void;
     vi.mocked(atualizarPeca).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
