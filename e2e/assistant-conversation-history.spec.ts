@@ -1,3 +1,4 @@
+import { fakeApiUrl } from "./support/urls";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import type { StoredMessage } from "../src/features/ai-assistant/conversation-history";
 import type { AssistantCompletedEvent, AssistantRequest } from "../src/features/ai-assistant/types";
@@ -5,7 +6,7 @@ import type { AssistantCompletedEvent, AssistantRequest } from "../src/features/
 const caseId = "11111111-1111-1111-1111-111111111111";
 const pieceId = "22222222-2222-2222-2222-222222222222";
 const conversationId = "66666666-6666-4666-8666-666666666666";
-const base = "http://127.0.0.1:5299";
+const base = fakeApiUrl;
 
 async function historyApi(page: Page, request: APIRequestContext, seed: StoredMessage[] = []) {
   const messages = [...seed];

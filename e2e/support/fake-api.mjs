@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 
-const port = 5299;
+const port = Number(process.env.JURIDICOAI_E2E_API_PORT ?? 5299);
 const caseId = "11111111-1111-1111-1111-111111111111";
 const pecaId = "22222222-2222-2222-2222-222222222222";
 const secondPecaId = "22222222-2222-2222-2222-222222222223";
@@ -306,7 +306,7 @@ function toSummary(document) {
 }
 
 function setCorsHeaders(response) {
-  response.setHeader("Access-Control-Allow-Origin", "http://127.0.0.1:4173");
+  response.setHeader("Access-Control-Allow-Origin", `http://127.0.0.1:${process.env.JURIDICOAI_E2E_FRONTEND_PORT ?? 4173}`);
   response.setHeader("Access-Control-Allow-Credentials", "true");
   response.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept, X-Correlation-ID");
   response.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");

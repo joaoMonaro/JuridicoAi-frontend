@@ -36,6 +36,8 @@ import type { ConversationTurn, RequestDraft, SelectionSnapshot } from "../conve
 import { useAssistantHistory } from "../use-assistant-history";
 import type { StoredProposal } from "../review/persistent-api";
 import { AutomaticProposalResult } from "./automatic-proposal-result";
+import { useAssistantDocuments } from "../use-assistant-documents";
+import { AssistantDocuments } from "./assistant-documents";
 
 interface Props {
   open: boolean;
@@ -138,6 +140,8 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
   const busy = preparing || activeTurn?.status === "sending" || activeTurn?.status === "streaming";
   const historyBlocked = capabilities.suportaHistorico && (history.loading || Boolean(history.error) || !history.conversationId || history.generating);
   const free = capabilities.suportaConversaLivre === true;
+  const documents = useAssistantDocuments(open && free && Boolean(capabilities.documentos) && transparency?.confirmado === true, history.conversationId);
+  const documentsBlocked = Boolean(capabilities.documentos) && (documents.loading || documents.uploading || documents.processing || Boolean(documents.error));
 
   useEffect(() => {
     if (!open || !capabilities.habilitado || transparency || transparencyError) return;
@@ -291,7 +295,7 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
       const focus = draft.selectionSnapshot?.editorRevision === editorRevision ? draft.selectionSnapshot : null;
       draft = { ...draft, mode: "Perguntar", scope: focus ? "Selecao" : "Nenhum", selectionSnapshot: focus };
     }
-    if (!editor || !capabilities.habilitado || !capabilities.modos.includes(draft.mode) || !draft.instruction.trim() || busy || sending.current || historyBlocked || blocked) return;
+    if (!editor || !capabilities.habilitado || !capabilities.modos.includes(draft.mode) || !draft.instruction.trim() || busy || sending.current || historyBlocked || documentsBlocked || blocked) return;
     setComposerError("");
     let snapshot: ReturnType<typeof captureEditorContext>;
     try {
@@ -392,13 +396,14 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
             editableText: event.sugestao.texto,
           }));
           if (event.proposta) onPreparedProposal?.(event.proposta);
+          if (capabilities.documentos) void documents.refresh();
           if (!draftOverride) {
             setInstruction("");
             setAdditionalContext("");
           }
         },
       }, controller.signal, capabilities.suportaHistorico ? history.conversationId : undefined,
-      free ? { propostaReferenciadaId: proposalReferenceId } : undefined);
+      free ? { propostaReferenciadaId: proposalReferenceId, anexoIds: capabilities.documentos ? documents.selected : undefined } : undefined);
     } catch (requestError) {
       if (requestError instanceof Error && requestError.name === "AbortError") {
         updateTurn(clientRequestId, (current) => ({
@@ -596,6 +601,7 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
     </div>
 
     {capabilities.habilitado && transparency?.confirmado ? <footer className="shrink-0 border-t bg-card p-3">
+      {capabilities.documentos && free ? <AssistantDocuments documents={documents} limits={capabilities.documentos} disabled={busy || blocked || historyBlocked} /> : null}
       {composerError ? <div className="mb-2"><ErrorBox message={composerError} /></div> : null}
       {!free && mode !== "Perguntar" ? <div className="mb-2 flex items-center gap-1.5">
         <span className="inline-flex items-center gap-1 rounded-full border border-primary/25 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary">{modeLabels[mode]}<button type="button" className="rounded-full p-0.5 hover:bg-primary/10" onClick={() => changeMode("Perguntar")} aria-label={`Remover ação ${modeLabels[mode]}`}><X className="size-3" /></button></span>
@@ -619,7 +625,7 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
           ref={instructionRef}
           className="min-h-20 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0"
           value={instruction}
-          disabled={busy || historyBlocked || blocked}
+          disabled={busy || historyBlocked || documentsBlocked || blocked}
           maxLength={capabilities.limites.instrucaoCaracteres}
           onChange={(event) => setInstruction(event.target.value)}
           onKeyDown={(event) => {
@@ -642,7 +648,7 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
             </div>
           </details>
           <span className="text-[10px] text-muted-foreground">{scope === "Nenhum" && capabilities.suportaHistorico ? "Peça atual e conversa" : scopeLabels[scope]}</span>
-          {busy ? <Button type="button" size="icon-sm" variant="outline" onClick={cancel} aria-label="Cancelar"><Square className="size-3 fill-current" /></Button> : <Button type="button" size="icon-sm" disabled={!editor || !instruction.trim() || historyBlocked || blocked} onClick={() => void submit()} aria-label="Enviar para IA"><Send /></Button>}
+          {busy ? <Button type="button" size="icon-sm" variant="outline" onClick={cancel} aria-label="Cancelar"><Square className="size-3 fill-current" /></Button> : <Button type="button" size="icon-sm" disabled={!editor || !instruction.trim() || historyBlocked || documentsBlocked || blocked} onClick={() => void submit()} aria-label="Enviar para IA"><Send /></Button>}
         </div>
       </div>
       {free ? <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Sugestões de pedidos">

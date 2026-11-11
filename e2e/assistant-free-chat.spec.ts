@@ -1,3 +1,4 @@
+import { fakeApiUrl } from "./support/urls";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import type { JSONContent } from "@tiptap/core";
@@ -7,14 +8,14 @@ import type { AssistantCompletedEvent, AssistantRequest } from "../src/features/
 
 const caseId = "11111111-1111-1111-1111-111111111111";
 const pieceId = "22222222-2222-2222-2222-222222222222";
-const base = "http://127.0.0.1:5299";
+const base = fakeApiUrl;
 const pieceUrl = `${base}/api/pecas/${pieceId}`;
 const conversationId = "66666666-6666-4666-8666-666666666666";
-interface FreeRequest { clientRequestId: string; texto: string; versaoPecaEsperada: number; propostaReferenciadaId: string | null; selecao: unknown }
+interface FreeRequest { clientRequestId: string; texto: string; versaoPecaEsperada: number; propostaReferenciadaId: string | null; selecao: unknown; anexoIds?: string[] }
 
 // Model outputs are scripted fixtures here. Intent selection, permissions and
 // transactional publication are exercised separately in the backend tests.
-async function freeApi(page: Page, request: APIRequestContext, outputs: Array<string | null>, chatOnly = false) {
+async function freeApi(page: Page, request: APIRequestContext, outputs: Array<string | null>, chatOnly = false, withDocuments = false) {
   const messages: StoredMessage[] = []; const proposals: StoredProposal[] = [];
   const sent: FreeRequest[] = []; let bridgeRegistrations = 0; let applications = 0;
   await page.route("**/api/templates-peca", (route) => route.fulfill({ json: [] }));
@@ -22,6 +23,7 @@ async function freeApi(page: Page, request: APIRequestContext, outputs: Array<st
     const response = await route.fetch(); const caps = await response.json();
     await route.fulfill({ json: { ...caps, suportaHistorico: true, suportaConversaLivre: true,
       suportaRevisaoPersistida: !chatOnly, modos: chatOnly ? ["Perguntar"] : caps.modos,
+      documentos: withDocuments ? { arquivoBytes: 20 * 1024 * 1024, pdfPaginas: 100, imagemMegapixels: 25, anexosPorConversa: 50, conversaBytes: 500 * 1024 * 1024, ocrHabilitado: false } : null,
       features: chatOnly ? ["AI_ASSISTANT"] : [...caps.features, "AI_DOCUMENT_GENERATION"] } });
   });
   await page.route("**/api/assistente/v2/**", async (route) => {
@@ -90,6 +92,44 @@ async function freeApi(page: Page, request: APIRequestContext, outputs: Array<st
   return { sent, messages, proposals, bridgeRegistrations: () => bridgeRegistrations, applications: () => applications };
 }
 const composer = (page: Page) => page.getByRole("textbox", { name: "O que você quer que a IA faça?" });
+test("anexo privado aguarda processamento e segue no pedido natural sem outra confirmação", async ({ page, request }) => {
+  const state = await freeApi(page, request, [null], false, true);
+  const id = randomUUID(); let uploaded = false; let ready = false;
+  await page.route("**/api/assistente/v2/conversas/*/anexos", async route => {
+    if (route.request().method() === "POST") {
+      expect(route.request().headers()["content-type"]).toContain("multipart/form-data"); uploaded = true;
+      return route.fulfill({ status: 202, json: { id } });
+    }
+    return route.fulfill({ json: uploaded ? [{ id, nome: "relato.txt", origem: "AnexoPrivado", formato: "txt", tamanhoBytes: 30,
+      estado: ready ? "Concluido" : "Processando", paginasTotal: null, paginasConcluidas: 0,
+      trechosConfiaveis: ready ? 1 : 0, trechosExcluidos: 0, codigoErro: null, problemas: [], vinculado: false }] : [] });
+  });
+  await open(page);
+  await page.getByLabel("Arquivo para o chat").setInputFiles({ name: "relato.txt", mimeType: "text/plain", buffer: Buffer.from("Beatriz pagou o valor informado.") });
+  await expect(page.getByText("Lendo documento", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Enviar para IA" })).toBeDisabled();
+  ready = true;
+  await expect(page.getByText("Leitura concluída", { exact: true })).toBeVisible();
+  await send(page, "Explique os fatos do documento.");
+  await expect(page.getByRole("heading", { name: "Explicação", exact: true })).toBeVisible();
+  expect(state.sent[0].anexoIds).toEqual([id]); expect(state.applications()).toBe(0);
+});
+
+test("leitura parcial mostra a região excluída e mantém a conversa disponível", async ({ page, request }) => {
+  await freeApi(page, request, [null], false, true);
+  await page.route("**/api/assistente/v2/conversas/*/anexos", route => route.fulfill({ json: [{
+    id: randomUUID(), nome: "prova.pdf", origem: "DocumentoCaso", formato: "pdf", tamanhoBytes: 100,
+    estado: "Parcial", paginasTotal: 2, paginasConcluidas: 2, trechosConfiaveis: 1, trechosExcluidos: 1,
+    codigoErro: null, vinculado: true, problemas: [{ pagina: 2, localizador: "página 2", codigo: "OCR_NOT_CALIBRATED" }],
+  }] }));
+  await open(page);
+  await expect(page.getByText("Leitura parcial · 2/2 páginas", { exact: true })).toBeVisible();
+  await page.getByText("Problemas de leitura", { exact: true }).click();
+  await expect(page.getByText("página 2: A leitura de imagens ainda não está habilitada neste ambiente.", { exact: true })).toBeVisible();
+  await expect(composer(page)).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Anexar documento" })).toBeEnabled();
+});
+
 async function open(page: Page) {
   await page.goto(`/casos/${caseId}`); await page.getByRole("button", { name: "Abrir assistente de IA" }).click();
   await expect(composer(page)).toBeEnabled();

@@ -29,13 +29,14 @@ export async function streamAssistantRequest(
   handlers: AssistantStreamHandlers,
   signal: AbortSignal,
   conversationId?: string | null,
-  free?: { propostaReferenciadaId?: string | null },
+  free?: { propostaReferenciadaId?: string | null; anexoIds?: string[] },
 ) {
   const path = conversationId ? `/assistente/v2/conversas/${conversationId}/${free ? "interacoes" : "mensagens"}` : `/pecas/${pecaId}/assistente/solicitacoes`;
   const body = free ? {
     clientRequestId: request.clientRequestId, texto: request.instrucao, versaoPecaEsperada: request.versaoPeca,
     selecao: request.contexto.documento.selecao, propostaReferenciadaId: free.propostaReferenciadaId ?? null,
     contextoAdicional: request.contexto.contextoAdicional, incluirDadosCaso: request.contexto.incluirDadosCaso, contextoCasoIds: request.contexto.contextoCasoIds,
+    anexoIds: free.anexoIds,
   } : request;
   const response = await apiFetch(path, {
     method: "POST",

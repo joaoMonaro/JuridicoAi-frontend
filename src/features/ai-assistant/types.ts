@@ -4,6 +4,7 @@ export type DocumentContextScope = "Nenhum" | "Selecao" | "SecaoAtual" | "Docume
 export type FindingCategory = "Lacuna" | "Contradicao" | "Clareza" | "Estrutura" | "Verificacao";
 
 export interface AssistantCapabilities {
+  documentos?: { arquivoBytes: number; pdfPaginas: number; imagemMegapixels: number; anexosPorConversa: number; conversaBytes: number; ocrHabilitado: boolean } | null;
   habilitado: boolean;
   features?: string[];
   modos: AssistantMode[];

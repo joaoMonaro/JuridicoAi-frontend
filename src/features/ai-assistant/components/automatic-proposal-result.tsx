@@ -9,7 +9,7 @@ export function AutomaticProposalResult({ completed, proposal, knownCurrent, onO
   const pending = proposal.grupos.filter((group) => group.estado === "Pendente").length;
   const status = !knownCurrent ? "Proposta salva no histórico. Consulte para ver o estado atual." :
     proposal.estado === "Substituida" ? "Esta proposta foi substituída por uma revisão posterior." :
-    proposal.estado === "Desatualizada" ? "A Peça mudou. Peça uma atualização desta proposta no chat." :
+    proposal.estado === "Desatualizada" ? "A Peça ou as fontes mudaram. Peça uma atualização desta proposta no chat." :
     pending ? "Alterações prontas para revisão no documento." : "Revisão desta proposta concluída.";
   return <section aria-label="Proposta de alterações da IA" className="space-y-3">
     <h3 className="text-sm font-semibold">{completed.sugestao.titulo || "Alterações propostas"}</h3>

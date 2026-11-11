@@ -1,9 +1,9 @@
+import { fakeApiUrl } from "./support/urls";
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 
 const caseId = "11111111-1111-1111-1111-111111111111";
 const pecaId = "22222222-2222-2222-2222-222222222222";
-const fakeApiUrl = "http://127.0.0.1:5299";
 
 test.beforeEach(async ({ page, request }) => {
   await request.post(`${fakeApiUrl}/__e2e/reset`);

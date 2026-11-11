@@ -24,6 +24,10 @@ Com `suportaConversaLivre`, o painel recebe pedidos naturais, prepara propostas
 diretamente na comparação e permite ajustar pendências pelo chat. A Peça só muda
 após a aprovação. Veja [conversa livre, ativação e limites](docs/assistant-free-chat.md).
 
+A etapa de [documentos no chat](docs/assistant-documents.md) integra anexos privados,
+fontes do Caso, leitura nativa e progresso. OCR permanece separado e desativado
+até concluir a calibração.
+
 ## Testes automatizados
 
 Os testes unitários e de componentes usam Vitest, jsdom e React Testing

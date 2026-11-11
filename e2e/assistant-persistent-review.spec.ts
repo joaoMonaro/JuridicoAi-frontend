@@ -1,8 +1,9 @@
+import { fakeApiUrl } from "./support/urls";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import type { StoredProposal, ReviewReceipt } from "../src/features/ai-assistant/review/persistent-api";
 
 const caseId = "11111111-1111-1111-1111-111111111111";
-const pieceUrl = "http://127.0.0.1:5299/api/pecas/22222222-2222-2222-2222-222222222222";
+const pieceUrl = `${fakeApiUrl}/api/pecas/22222222-2222-2222-2222-222222222222`;
 const conversationId = "66666666-6666-4666-8666-666666666666";
 
 // These browser tests exercise the editor/API boundary. Transactional behavior is
@@ -89,7 +90,7 @@ async function generateProposal(page: Page) {
 }
 
 test.beforeEach(async ({ page, request }) => {
-  await request.post("http://127.0.0.1:5299/__e2e/reset");
+  await request.post(`${fakeApiUrl}/__e2e/reset`);
   await page.addInitScript(() => window.sessionStorage.setItem("juridicoai.auth-session", JSON.stringify({
     accessToken: "token-e2e-ficticio", expiresIn: 3_600, expiresAt: Date.now() + 3_600_000,
     user: { id: "user-e2e", nome: "Usuário E2E", email: "e2e@example.test" },

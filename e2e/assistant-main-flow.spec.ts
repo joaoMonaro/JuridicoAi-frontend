@@ -1,9 +1,10 @@
+import { fakeApiUrl } from "./support/urls";
 import { expect, test } from "@playwright/test";
 
 const caseId = "11111111-1111-1111-1111-111111111111";
 
 test.beforeEach(async ({ page, request }) => {
-  await request.post("http://127.0.0.1:5299/__e2e/reset");
+  await request.post(`${fakeApiUrl}/__e2e/reset`);
   await page.addInitScript(() => {
     window.sessionStorage.setItem("juridicoai.auth-session", JSON.stringify({
       accessToken: "token-e2e-ficticio",
