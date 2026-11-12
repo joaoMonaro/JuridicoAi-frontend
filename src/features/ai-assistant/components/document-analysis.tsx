@@ -12,8 +12,8 @@ const labels: Record<AssistantDocumentAnalysis["estado"], string> = {
 };
 const active = (state: string) => ["NaFila", "Lendo", "Consolidando", "Pronta", "PreparandoResposta"].includes(state);
 
-export function DocumentAnalysis({ conversationId, analysisId, onTerminal }: {
-  conversationId: string; analysisId: string; onTerminal: () => Promise<void>;
+export function DocumentAnalysis({ conversationId, analysisId, onTerminal, managed = false }: {
+  conversationId: string; analysisId: string; onTerminal: () => Promise<void>; managed?: boolean;
 }) {
   const [analysis, setAnalysis] = useState<AssistantDocumentAnalysis | null>(null);
   const [epoch, setEpoch] = useState(0);
@@ -62,8 +62,8 @@ export function DocumentAnalysis({ conversationId, analysisId, onTerminal }: {
           <span className="break-words font-medium">{source.nome}</span>: {source.trechosAnalisados ?? 0}/{source.trechosElegiveis} analisados · {source.trechosExcluidos} excluídos{source.estado !== "Concluido" ? " · leitura incompleta" : ""}
         </li>)}</ul>
       </details>
-      {active(analysis.estado) ? <Button className="mt-2" size="sm" variant="outline" disabled={working} onClick={() => { void action("cancelamento"); }}>Cancelar análise</Button> : null}
-      {analysis.estado === "Interrompida" ? <Button className="mt-2" size="sm" variant="outline" disabled={working} onClick={() => { void action("retomada"); }}>Retomar análise</Button> : null}
+      {!managed && active(analysis.estado) ? <Button className="mt-2" size="sm" variant="outline" disabled={working} onClick={() => { void action("cancelamento"); }}>Cancelar análise</Button> : null}
+      {!managed && analysis.estado === "Interrompida" ? <Button className="mt-2" size="sm" variant="outline" disabled={working} onClick={() => { void action("retomada"); }}>Retomar análise</Button> : null}
     </> : null}
     {error ? <><p role="alert" className="mt-2 text-destructive">{error}</p><Button size="sm" variant="outline" onClick={() => setEpoch(current => current + 1)}>Consultar análise novamente</Button></> : null}
   </section>;

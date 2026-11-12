@@ -43,7 +43,7 @@ export function useAssistantHistory(enabled: boolean, pecaId: string) {
     queueMicrotask(() => { if (active) void load(); });
     return () => { active = false; controller.current?.abort(); };
   }, [enabled, load]);
-  const generating = messages.some((message) => message.estado === "Gerando" || message.estado === "AguardandoAnalise");
+  const generating = messages.some((message) => message.estado === "Gerando" || message.estado === "AguardandoAnalise" || message.estado === "AguardandoGeracao");
   useEffect(() => {
     if (!enabled || !generating || loading || error) return;
     const timer = window.setTimeout(() => { void load(); }, 1500);

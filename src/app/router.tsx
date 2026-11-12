@@ -7,6 +7,8 @@ import { CasesPage } from "@/pages/CasesPage";
 import { CaseWorkspacePage } from "@/pages/CaseWorkspacePage";
 import { LoginPage } from "@/pages/LoginPage";
 
+const PersonalHistoryPage = lazy(() => import("@/pages/PersonalHistoryPage").then(module => ({ default: module.PersonalHistoryPage })));
+
 const LOGIN_PATH = "/login";
 const CASES_PATH = "/casos";
 const CREATE_CASE_PATH = "/casos/novo";
@@ -22,6 +24,8 @@ export function AppRouter() {
   if (AssistantReviewSandboxPage && currentPath === "/dev/revisao-peca") {
     return <Suspense fallback={<p>Carregando revisão...</p>}><AssistantReviewSandboxPage /></Suspense>;
   }
+
+  if (currentPath === "/historico-assistente") return <Suspense fallback={<p>Carregando histórico...</p>}><PersonalHistoryPage conversationId={currentUrl.searchParams.get("conversa") ?? undefined} /></Suspense>;
 
   if (currentPath === LOGIN_PATH) {
     if (session) {

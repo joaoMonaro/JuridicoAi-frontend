@@ -324,3 +324,12 @@ async function captureError(promise: Promise<void>): Promise<ApiError> {
   }
   throw new Error("Era esperado que o stream falhasse.");
 }
+
+
+it("enfileiramento encerra o transporte sem tratar a proposta como concluída", async () => {
+  const onGenerationQueued = vi.fn(); const onCompleted = vi.fn();
+  const generation = { id: "gen-1", estado: "NaFila", secoesConcluidas: 0, secoesTotal: 0, secoes: [], codigoErro: null, analiseId: null };
+  await consumeAssistantEventStream(streamOf(sse("solicitacao.iniciada", { solicitacaoId: "sol-1", clientRequestId: "req-1" }, 1),
+    sse("solicitacao.enfileirada", generation, 2)), { onGenerationQueued, onCompleted }, 200);
+  expect(onGenerationQueued).toHaveBeenCalledWith(generation); expect(onCompleted).not.toHaveBeenCalled();
+});

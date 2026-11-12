@@ -17,6 +17,7 @@ export interface AssistantCapabilities {
   suportaHistorico: boolean;
   suportaRevisaoPersistida?: boolean;
   suportaConversaLivre?: boolean;
+  suportaGeracaoDuravel?: boolean;
 }
 
 export interface AssistantTransparency {
@@ -136,7 +137,15 @@ export interface AssistantDocumentAnalysis {
   fontes: AssistantDocumentCoverage["fontes"];
 }
 
+export interface AssistantGeneration {
+  id: string;
+  estado: "NaFila" | "PreparandoContexto" | "AguardandoDocumentos" | "AguardandoAnalise" | "Executando" | "Redigindo" | "Verificando" | "Publicando" | "Concluida" | "Interrompida" | "Incompleta" | "Desatualizada" | "Cancelada";
+  secoesConcluidas: number; secoesTotal: number; secoes: string[];
+  codigoErro: string | null; analiseId: string | null;
+}
+
 export interface AssistantStreamHandlers {
+  onGenerationQueued?: (generation: AssistantGeneration) => void;
   onWaiting?: (analysis: AssistantDocumentAnalysis) => void;
   onHistoryContext?: (context: AssistantHistoryContext) => void;
   onDocumentCoverage?: (coverage: AssistantDocumentCoverage) => void;

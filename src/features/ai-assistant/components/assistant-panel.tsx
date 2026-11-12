@@ -38,6 +38,7 @@ import type { StoredProposal } from "../review/persistent-api";
 import { AutomaticProposalResult } from "./automatic-proposal-result";
 import { useAssistantDocuments } from "../use-assistant-documents";
 import { AssistantDocuments } from "./assistant-documents";
+import { GenerationProgress } from "./generation-progress";
 import { DocumentAnalysis } from "./document-analysis";
 import { HistoryContext } from "./history-context";
 import { DocumentCoverage } from "./document-coverage";
@@ -145,10 +146,11 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
   useEffect(() => {
     if (!open) return;
     for (const turn of turns) {
-      if (!turn.analysisId) continue;
-      if (turn.status === "analyzing") pendingAnalyses.current.add(turn.analysisId);
-      if (turn.completed?.proposta && pendingAnalyses.current.has(turn.analysisId) && !openedAnalyses.current.has(turn.analysisId)) {
-        openedAnalyses.current.add(turn.analysisId);
+      const jobId = turn.generationId ?? turn.analysisId;
+      if (!jobId) continue;
+      if (turn.status === "analyzing") pendingAnalyses.current.add(jobId);
+      if (turn.completed?.proposta && pendingAnalyses.current.has(jobId) && !openedAnalyses.current.has(jobId)) {
+        openedAnalyses.current.add(jobId);
         onPreparedProposal?.(turn.completed.proposta);
       }
     }
@@ -157,7 +159,7 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
   const historyBlocked = capabilities.suportaHistorico && (history.loading || Boolean(history.error) || !history.conversationId || history.generating);
   const free = capabilities.suportaConversaLivre === true;
   const documents = useAssistantDocuments(open && free && Boolean(capabilities.documentos) && transparency?.confirmado === true, history.conversationId);
-  const documentsBlocked = Boolean(capabilities.documentos) && (documents.loading || documents.uploading || documents.processing || Boolean(documents.error));
+  const documentsBlocked = Boolean(capabilities.documentos) && (documents.loading || documents.uploading || (!capabilities.suportaGeracaoDuravel && documents.processing) || Boolean(documents.error));
 
   useEffect(() => {
     if (!open || !capabilities.habilitado || transparency || transparencyError) return;
@@ -404,6 +406,11 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
           ...current,
           streamedText: current.streamedText + delta,
         })),
+        onGenerationQueued: generation => {
+          pendingAnalyses.current.add(generation.id);
+          updateTurn(clientRequestId, current => ({ ...current, status: "analyzing", generationId: generation.id }));
+          if (!draftOverride) { setInstruction(""); setAdditionalContext(""); }
+        },
         onWaiting: analysis => {
           pendingAnalyses.current.add(analysis.id);
           updateTurn(clientRequestId, current => ({ ...current, status: "analyzing", analysisId: analysis.id }));
@@ -764,7 +771,7 @@ function ConversationTurnView({ turn, conversationId, onRefreshHistory, contexts
         {turn.streamedText ? <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{turn.streamedText}</p> : null}
       </> : null}
       {turn.status === "cancelled" || turn.status === "error" ? <ErrorBox message={turn.error} /> : null}
-      {turn.historical && (turn.status === "cancelled" || turn.status === "error") ? <Button size="sm" variant="outline" onClick={onRetry}>Reenviar pedido</Button> : null}
+      {turn.historical && !turn.generationId && (turn.status === "cancelled" || turn.status === "error") ? <Button size="sm" variant="outline" onClick={onRetry}>Reenviar pedido</Button> : null}
       {turn.historical && !turn.completed && turn.status === "completed" ? <p className="whitespace-pre-wrap text-sm leading-6">{turn.streamedText}</p> : null}
       {turn.error && turn.status !== "cancelled" && turn.status !== "error" ? <div className="mb-3"><ErrorBox message={turn.error} /></div> : null}
       {turn.completed && suggestion ? <>
@@ -788,7 +795,8 @@ function ConversationTurnView({ turn, conversationId, onRefreshHistory, contexts
           canDevelop={canDevelop}
         />}
       </> : null}
-      {turn.analysisId && conversationId ? <DocumentAnalysis conversationId={conversationId} analysisId={turn.analysisId} onTerminal={onRefreshHistory} /> : null}
+      {turn.generationId && conversationId ? <GenerationProgress conversationId={conversationId} generationId={turn.generationId} onTerminal={onRefreshHistory} /> : null}
+      {!turn.generationId && turn.analysisId && conversationId ? <DocumentAnalysis conversationId={conversationId} analysisId={turn.analysisId} onTerminal={onRefreshHistory} /> : null}
       {turn.completed?.contextoHistorico || turn.historyContext ? <HistoryContext
         context={(turn.completed?.contextoHistorico ?? turn.historyContext)!} /> : null}
       {turn.completed?.coberturaDocumental || turn.coverage ? <DocumentCoverage

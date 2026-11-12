@@ -5,6 +5,7 @@ import type {
   AssistantDocumentCoverage,
   AssistantHistoryContext,
   AssistantDocumentAnalysis,
+  AssistantGeneration,
 } from "@/features/ai-assistant/types";
 import { ApiError } from "@/lib/api-client";
 
@@ -116,6 +117,11 @@ export async function consumeAssistantEventStream(
       return;
     }
     terminalReceived = true;
+    if (event.event === "solicitacao.enfileirada") {
+      if (!isGeneration(data)) throw invalidStream(responseStatus);
+      handlers.onGenerationQueued?.(data);
+      return;
+    }
     if (event.event === "solicitacao.aguardando") {
       if (!isDocumentAnalysis(data)) throw invalidStream(responseStatus);
       handlers.onWaiting?.(data);
@@ -194,7 +200,7 @@ function parseEvent(lines: string[]): SseEvent | null {
 function isAssistantEvent(event: string): boolean {
   return event === "solicitacao.iniciada" || event === "conteudo.delta" ||
     event === "contexto.documental" || event === "contexto.historico" ||
-    event === "solicitacao.concluida" || event === "solicitacao.falhou" || event === "solicitacao.aguardando";
+    event === "solicitacao.concluida" || event === "solicitacao.falhou" || event === "solicitacao.aguardando" || event === "solicitacao.enfileirada";
 }
 
 function parseEventIdentity(value: string | null): { requestId: string; sequence: number } | null {
@@ -263,4 +269,13 @@ export function isDocumentAnalysis(value: unknown): value is AssistantDocumentAn
     count(value.lotesConcluidos) && count(value.trechosAnalisados) && count(value.trechosElegiveis) && count(value.trechosExcluidos) &&
     Number(value.trechosAnalisados) <= Number(value.trechosElegiveis) && (value.codigoErro === null || typeof value.codigoErro === "string") &&
     isDocumentCoverage({ estado: "Parcial", escopoSolicitado: "Todos", limiteAtingido: false, fontes: value.fontes });
+}
+
+export function isGeneration(value: unknown): value is AssistantGeneration {
+  const count = (n: unknown) => typeof n === "number" && Number.isSafeInteger(n) && n >= 0;
+  return isRecord(value) && typeof value.id === "string" && value.id.length > 0 &&
+    ["NaFila", "PreparandoContexto", "AguardandoDocumentos", "AguardandoAnalise", "Executando", "Redigindo", "Verificando", "Publicando", "Concluida", "Interrompida", "Incompleta", "Desatualizada", "Cancelada"].includes(String(value.estado)) &&
+    count(value.secoesConcluidas) && count(value.secoesTotal) && Number(value.secoesConcluidas) <= Number(value.secoesTotal) &&
+    Array.isArray(value.secoes) && value.secoes.length === value.secoesTotal && value.secoes.every(s => typeof s === "string") &&
+    (value.codigoErro === null || typeof value.codigoErro === "string") && (value.analiseId === null || typeof value.analiseId === "string");
 }

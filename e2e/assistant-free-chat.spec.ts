@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import type { JSONContent } from "@tiptap/core";
 import type { StoredMessage } from "../src/features/ai-assistant/conversation-history";
 import type { StoredProposal, ReviewReceipt } from "../src/features/ai-assistant/review/persistent-api";
-import type { AssistantCompletedEvent, AssistantDocumentCoverage, AssistantHistoryContext, AssistantDocumentAnalysis, AssistantRequest } from "../src/features/ai-assistant/types";
+import type { AssistantCompletedEvent, AssistantDocumentCoverage, AssistantHistoryContext, AssistantDocumentAnalysis, AssistantGeneration, AssistantRequest } from "../src/features/ai-assistant/types";
 
 const caseId = "11111111-1111-1111-1111-111111111111";
 const pieceId = "22222222-2222-2222-2222-222222222222";
@@ -15,17 +15,19 @@ interface FreeRequest { clientRequestId: string; texto: string; versaoPecaEspera
 
 // Model outputs are scripted fixtures here. Intent selection, permissions and
 // transactional publication are exercised separately in the backend tests.
-async function freeApi(page: Page, request: APIRequestContext, outputs: Array<string | null>, chatOnly = false, withDocuments = false, coverage?: AssistantDocumentCoverage, historyContext?: AssistantHistoryContext, withAnalysis = false) {
+async function freeApi(page: Page, request: APIRequestContext, outputs: Array<string | null>, chatOnly = false, withDocuments = false, coverage?: AssistantDocumentCoverage, historyContext?: AssistantHistoryContext, withAnalysis = false, withGeneration = false) {
   const messages: StoredMessage[] = []; const proposals: StoredProposal[] = [];
   const sent: FreeRequest[] = []; let bridgeRegistrations = 0; let applications = 0; let resumes = 0;
   const analysis: AssistantDocumentAnalysis = { id: randomUUID(), estado: "NaFila", lotesConcluidos: 0, trechosAnalisados: 0,
     trechosElegiveis: 5, trechosExcluidos: 0, codigoErro: null,
     fontes: [{ id: randomUUID(), nome: "contrato-extenso.txt", origem: "AnexoPrivado", estado: "Concluido", trechosConsultados: 0, trechosElegiveis: 5, trechosExcluidos: 0, trechosAnalisados: 0 }] };
+  const generation: AssistantGeneration = { id: randomUUID(), estado: "NaFila", secoesConcluidas: 0, secoesTotal: 3, secoes: ["Fatos", "Fundamentos", "Pedidos"], codigoErro: null, analiseId: null };
   let pendingResult: AssistantCompletedEvent | null = null;
   let pendingProposal: StoredProposal | null = null;
   const completeAnalysis = () => {
     analysis.estado = "Concluida"; analysis.lotesConcluidos = 2; analysis.trechosAnalisados = 5; analysis.fontes[0].trechosAnalisados = 5;
-    const response = messages.find(m => m.analiseDocumentalId === analysis.id)!;
+    const response = messages.find(m => withGeneration ? m.geracaoId === generation.id : m.analiseDocumentalId === analysis.id)!;
+    if (withGeneration) generation.estado = "Concluida";
     response.estado = "Concluida"; response.resultado = pendingResult; response.texto = pendingResult!.sugestao.texto;
     response.propostaId = pendingProposal?.id ?? null;
     messages.find(m => m.id === response.respostaAId)!.propostaId = pendingProposal?.id ?? null;
@@ -34,13 +36,19 @@ async function freeApi(page: Page, request: APIRequestContext, outputs: Array<st
   await page.route("**/api/templates-peca", (route) => route.fulfill({ json: [] }));
   await page.route("**/api/assistente/capacidades", async (route) => {
     const response = await route.fetch(); const caps = await response.json();
-    await route.fulfill({ json: { ...caps, suportaHistorico: true, suportaConversaLivre: true,
+    await route.fulfill({ json: { ...caps, suportaHistorico: true, suportaConversaLivre: true, suportaGeracaoDuravel: withGeneration,
       suportaRevisaoPersistida: !chatOnly, modos: chatOnly ? ["Perguntar"] : caps.modos,
       documentos: withDocuments ? { arquivoBytes: 20 * 1024 * 1024, pdfPaginas: 100, imagemMegapixels: 25, anexosPorConversa: 50, conversaBytes: 500 * 1024 * 1024, ocrHabilitado: false } : null,
       features: chatOnly ? ["AI_ASSISTANT"] : [...caps.features, "AI_DOCUMENT_GENERATION"] } });
   });
   await page.route("**/api/assistente/v2/**", async (route) => {
     const req = route.request(); const path = new URL(req.url()).pathname;
+    if (path.includes(`/geracoes/${generation.id}`)) {
+      const response = messages.find(m => m.geracaoId === generation.id);
+      if (path.endsWith("/cancelamento")) { generation.estado = "Cancelada"; if (response) response.estado = "Cancelada"; return route.fulfill({ status: 204 }); }
+      if (path.endsWith("/retomada")) { resumes++; generation.estado = "Redigindo"; if (response) response.estado = "AguardandoGeracao"; return route.fulfill({ status: 202 }); }
+      return route.fulfill({ json: generation });
+    }
     if (path.includes(`/analises/${analysis.id}`)) {
       const response = messages.find(m => m.analiseDocumentalId === analysis.id);
       if (path.endsWith("/cancelamento")) { analysis.estado = "Cancelada"; if (response) response.estado = "Cancelada"; return route.fulfill({ status: 204 }); }
@@ -68,7 +76,7 @@ async function freeApi(page: Page, request: APIRequestContext, outputs: Array<st
           const previous = proposals.find((p) => p.id === input.propostaReferenciadaId)!;
           previous.estado = "Substituida"; previous.substituidaPorId = proposal.id;
         }
-        if (!withAnalysis) proposals.push(proposal);
+        if (!withAnalysis && !withGeneration) proposals.push(proposal);
       }
       const result: AssistantCompletedEvent = {
         sugestao: { id: randomUUID(), mensagemUsuarioId: userId, modo: "Perguntar",
@@ -86,14 +94,14 @@ async function freeApi(page: Page, request: APIRequestContext, outputs: Array<st
         clientRequestId: input.clientRequestId, criadaEm: new Date().toISOString(), estado: "Concluida", solicitacao: storedRequest },
       { id: answerId, sequencia: sequence + 1, autor: "Assistente", texto: result.sugestao.texto,
         propostaId: proposal?.id ?? null, respostaAId: userId, criadaEm: new Date().toISOString(), estado: "Concluida", resultado: result });
-      if (withAnalysis) {
+      if (withAnalysis || withGeneration) {
         pendingResult = result; pendingProposal = proposal;
         const response = messages[messages.length - 1]; response.estado = "AguardandoAnalise";
-        response.resultado = null; response.propostaId = null; response.texto = ""; response.analiseDocumentalId = analysis.id;
+        response.resultado = null; response.propostaId = null; response.texto = ""; if (withGeneration) { response.geracaoId = generation.id; response.estado = "AguardandoGeracao"; } else response.analiseDocumentalId = analysis.id;
         messages[messages.length - 2].propostaId = null;
         return route.fulfill({ contentType: "text/event-stream", body:
           `id: ${answerId}:1\nevent: solicitacao.iniciada\ndata: ${JSON.stringify({ solicitacaoId: answerId, clientRequestId: input.clientRequestId })}\n\n` +
-          `id: ${answerId}:2\nevent: solicitacao.aguardando\ndata: ${JSON.stringify(analysis)}\n\n` });
+          `id: ${answerId}:2\nevent: ${withGeneration ? "solicitacao.enfileirada" : "solicitacao.aguardando"}\ndata: ${JSON.stringify(withGeneration ? generation : analysis)}\n\n` });
       }
       const events = [
         ["solicitacao.iniciada", { solicitacaoId: answerId, clientRequestId: input.clientRequestId }],
@@ -124,7 +132,7 @@ async function freeApi(page: Page, request: APIRequestContext, outputs: Array<st
     if (proposalGet) return route.fulfill({ json: proposals.find((p) => p.id === proposalGet[1]) });
     return route.fulfill({ status: 404 });
   });
-  return { sent, messages, proposals, analysis, completeAnalysis, resumes: () => resumes, bridgeRegistrations: () => bridgeRegistrations, applications: () => applications };
+  return { sent, messages, proposals, analysis, generation, completeAnalysis, resumes: () => resumes, bridgeRegistrations: () => bridgeRegistrations, applications: () => applications };
 }
 const composer = (page: Page) => page.getByRole("textbox", { name: "O que você quer que a IA faça?" });
 test("consulta seletiva mostra cobertura por arquivo e recupera após reload", async ({ page, request }) => {
@@ -328,4 +336,42 @@ test("retomada de análise interrompida reaproveita o pedido sem reenviar a mens
   await page.getByRole("button", { name: "Retomar análise", exact: true }).click();
   await expect(page.getByText("Analisando documentos por etapas", { exact: true })).toBeVisible();
   expect(state.resumes()).toBe(1); expect(state.sent).toHaveLength(1);
+});
+
+
+test("geração por seções continua ao reabrir e só a proposta final permite aprovação", async ({ page, request }) => {
+  const state = await freeApi(page, request, ["Minuta completa após revisão das seções."], false, false, undefined, undefined, false, true);
+  await open(page); await send(page, "Gere a minuta completa com os fatos apresentados.");
+  const progress = page.getByRole("region", { name: "Progresso do pedido" });
+  await expect(progress).toContainText("Pedido salvo; aguardando processamento");
+  await expect(page.getByRole("button", { name: "Aprovar todas", exact: true })).toHaveCount(0);
+  state.generation.estado = "Redigindo"; state.generation.secoesConcluidas = 1; state.messages[1].estado = "Gerando";
+  await expect(progress).toContainText("1/3 seções redigidas");
+  await progress.getByText("Ver plano da minuta", { exact: true }).click(); await expect(progress).toContainText("Fundamentos");
+  await page.reload(); await page.getByRole("button", { name: "Abrir assistente de IA" }).click();
+  await expect(progress).toContainText("1/3 seções redigidas");
+  state.generation.estado = "Verificando"; state.generation.secoesConcluidas = 3;
+  await expect(progress).toContainText("Revisando a completude e a coerência da minuta");
+  expect(state.sent).toHaveLength(1); expect(state.applications()).toBe(0);
+  await page.screenshot({ path: "test-results/assistant-durable-generation.png", fullPage: true });
+  state.completeAnalysis();
+  await expect(page.getByRole("button", { name: "Aprovar todas", exact: true })).toBeEnabled();
+  expect((await (await request.get(pieceUrl)).json()).versao).toBe(1);
+  await page.getByRole("button", { name: "Aprovar todas", exact: true }).click();
+  await expect(page.locator(".ProseMirror")).toHaveText("Minuta completa após revisão das seções.");
+  expect(state.sent).toHaveLength(1); expect(state.applications()).toBe(1);
+});
+
+test("retoma geração interrompida no mesmo pedido e cancela sem aplicar a peça", async ({ page, request }) => {
+  const state = await freeApi(page, request, [null], false, false, undefined, undefined, false, true);
+  await open(page); await send(page, "Gere uma minuta.");
+  await expect(page.getByText("Pedido salvo; aguardando processamento", { exact: true })).toBeVisible();
+  state.generation.estado = "Interrompida"; state.messages[1].estado = "Interrompida";
+  await page.getByRole("button", { name: "Retomar processamento", exact: true }).click();
+  await expect(page.getByText("Redigindo a minuta por seções", { exact: true })).toBeVisible();
+  expect(state.sent).toHaveLength(1); expect(state.resumes()).toBe(1);
+  await page.getByRole("button", { name: "Cancelar processamento", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Progresso do pedido" })).toContainText("Pedido cancelado");
+  expect(state.applications()).toBe(0); expect(state.messages).toHaveLength(2);
+  await expect(composer(page)).toBeEnabled();
 });

@@ -1,10 +1,11 @@
-import { Bell, Building2, ChevronLeft, LoaderCircle, LogOut, Plus, Save, Scale, UserRound } from "lucide-react";
+import { Bell, Building2, ChevronLeft, History, LoaderCircle, LogOut, Plus, Save, Scale, UserRound } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
 import { useState } from "react";
 
 import { navigate } from "@/app/navigation";
 import { AppLink } from "@/components/shared/app-link";
 import { Button } from "@/components/ui/button";
+import { personalLogout } from "@/features/ai-assistant/personal-history";
 import { logout } from "@/features/auth/api/logout";
 import { clearAuthSession, getAuthSession } from "@/features/auth/auth-session";
 
@@ -17,20 +18,22 @@ interface AppTopbarProps {
 
 export function AppTopbar({ onCreate, onSave, showCaseNavigation = false, caseTitle }: AppTopbarProps) {
   const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState("");
   const session = getAuthSession();
 
   async function handleLogout() {
     if (loggingOut) return;
     setLoggingOut(true);
 
+    setLogoutError("");
     try {
-      await logout();
-    } catch {
-      // A sessão local ainda deve ser encerrada se a API estiver indisponível.
-    } finally {
+      const results = await Promise.allSettled([logout(), personalLogout()]);
+      if (results.some(result => result.status === "rejected")) {
+        setLogoutError("Não foi possível encerrar todas as sessões. Tente novamente."); return;
+      }
       clearAuthSession();
       navigate("/login", { replace: true });
-    }
+    } finally { setLoggingOut(false); }
   }
 
   return (
@@ -68,6 +71,7 @@ export function AppTopbar({ onCreate, onSave, showCaseNavigation = false, caseTi
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
+        {logoutError ? <span role="alert" className="max-w-56 text-xs text-destructive">{logoutError}</span> : null}
         {onCreate && (
           <Button type="button" size="sm" className="px-2 xl:px-3" onClick={onCreate} aria-label="Nova peça" title="Nova peça">
             <Plus data-icon="inline-start" />
@@ -115,6 +119,7 @@ export function AppTopbar({ onCreate, onSave, showCaseNavigation = false, caseTi
                 )}
               </DropdownMenu.Label>
 
+              <DropdownMenu.Item onSelect={() => navigate("/historico-assistente")} className="flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-sm outline-none focus:bg-muted"><History className="size-4" />Meu histórico de conversas</DropdownMenu.Item>
               <DropdownMenu.Separator className="my-1 h-px bg-border" />
 
               <DropdownMenu.Item
