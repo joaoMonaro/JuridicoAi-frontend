@@ -1,5 +1,9 @@
 # Conversa persistida e contexto básico
 
+> Registro da etapa indicada neste documento. Funcionalidades e contagens de testes
+> refletem aquele recorte; pendências citadas não substituem o
+> [estado consolidado atual](assistant-implementation-status.md).
+
 A API anuncia `suportaHistorico` quando `AssistenteIa:ConversationV2Enabled` e
 `ReviewV2Enabled` estão ativos, com IA habilitada e acesso da organização. As duas
 flags são desligadas por padrão. Aplicar as migrations `AddAssistantReviewWorkspace`

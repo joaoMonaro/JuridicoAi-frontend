@@ -1,5 +1,9 @@
 # Análise documental por etapas
 
+> Registro da etapa indicada neste documento. Funcionalidades e contagens de testes
+> refletem aquele recorte; pendências citadas não substituem o
+> [estado consolidado atual](assistant-implementation-status.md).
+
 Implementada em 2026-11-12, atrás de `AssistenteDocumentos:AnalysisEnabled=false`
 por padrão. Documentos/recuperação e conversa livre precisam estar habilitados no
 backend. OCR permanece em stand by.

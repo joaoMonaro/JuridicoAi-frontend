@@ -1,5 +1,9 @@
 # Revisão persistida no editor real
 
+> Registro da etapa indicada neste documento. Funcionalidades e contagens de testes
+> refletem aquele recorte; pendências citadas não substituem o
+> [estado consolidado atual](assistant-implementation-status.md).
+
 O frontend utiliza esse fluxo quando `GET /assistente/capacidades` retorna
 `suportaRevisaoPersistida: true`. O backend requer a migration
 `AddAssistantReviewWorkspace`, `AssistenteIa:ReviewV2Enabled=true` e os acessos

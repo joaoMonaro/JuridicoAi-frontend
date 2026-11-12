@@ -1,5 +1,9 @@
 # Contexto de conversas extensas
 
+> Registro da etapa indicada neste documento. Funcionalidades e contagens de testes
+> refletem aquele recorte; pendências citadas não substituem o
+> [estado consolidado atual](assistant-implementation-status.md).
+
 Etapa implementada em 2026-11-12. O backend pode combinar resumo privado versionado,
 mensagens recentes e consulta ao histórico original, sem confirmação adicional.
 O histórico completo continua salvo. Alterações da Peça passam pela revisão visual

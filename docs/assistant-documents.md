@@ -1,5 +1,9 @@
 # Documentos no chat
 
+> Registro da etapa indicada neste documento. Funcionalidades e contagens de testes
+> refletem aquele recorte; pendências citadas não substituem o
+> [estado consolidado atual](assistant-implementation-status.md).
+
 A capacidade `documentos` habilita **Anexar documento**, lista de fontes e
 processamento no painel. Depende da conversa livre e da flag adicional
 `AssistenteDocumentos:Enabled`, desligada por padrão. A API precisa da migration

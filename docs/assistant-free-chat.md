@@ -1,5 +1,9 @@
 # Conversa livre no editor
 
+> Registro da etapa indicada neste documento. Funcionalidades e contagens de testes
+> refletem aquele recorte; pendências citadas não substituem o
+> [estado consolidado atual](assistant-implementation-status.md).
+
 A capacidade `suportaConversaLivre` ativa o fluxo sem modos técnicos. Ela exige
 as flags de revisão, histórico e `AssistenteIa:AutomaticConversationEnabled` no
 backend, todas desligadas por padrão. Aplicar as três migrations antes de ativar:

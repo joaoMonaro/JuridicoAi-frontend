@@ -1,5 +1,9 @@
 # Histórico pessoal e exclusão autorizada
 
+> Registro da etapa indicada neste documento. Funcionalidades e contagens de testes
+> refletem aquele recorte; pendências citadas não substituem o
+> [estado consolidado atual](assistant-implementation-status.md).
+
 Implementado em 2026-11-12. A rota `/historico-assistente` fica fora do editor e do
 guard de autenticação organizacional. Acesso pelo menu do usuário e pela página de
 login. Usa e-mail/senha numa sessão pessoal separada; continua funcionando sem

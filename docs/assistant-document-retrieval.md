@@ -1,5 +1,9 @@
 # Consulta documental por etapas
 
+> Registro da etapa indicada neste documento. Funcionalidades e contagens de testes
+> refletem aquele recorte; pendências citadas não substituem o
+> [estado consolidado atual](assistant-implementation-status.md).
+
 A flag de backend `AssistenteDocumentos:RetrievalEnabled` integra a recuperação
 documental ao fluxo livre. Requer a migration `TrackAssistantDocumentCoverage` e
 as flags de documentos/conversa já existentes. O default continua desligado.

@@ -1,5 +1,9 @@
 # E0 — comparação de alterações no editor
 
+> Registro da etapa indicada neste documento. Funcionalidades e contagens de testes
+> refletem aquele recorte; pendências citadas não substituem o
+> [estado consolidado atual](assistant-implementation-status.md).
+
 Primeira implementação local da revisão de propostas, com dados fictícios. Não
 integra ainda IA, histórico persistente, upload ou aprovação transacional no backend.
 

@@ -1,4 +1,12 @@
-# React + TypeScript + Vite
+# JuridicoAI — frontend
+
+## Estado atual do assistente
+
+[Andamento, integrações e limites atuais](docs/assistant-implementation-status.md).
+Os documentos abaixo registram etapas da evolução; não são checklists atuais
+independentes. Geração durável por seções e histórico pessoal já estão integrados,
+com ativação pelas capacidades do backend. A entrega ainda exige homologação e
+preparação operacional; OCR permanece em espera.
 
 ## Revisão visual da Peça — E0
 
@@ -34,6 +42,10 @@ A [memória de conversas extensas](docs/assistant-history-memory.md) indica uso 
 resumo e mensagens recentes, preservando o histórico completo e a aprovação visual.
 A [análise documental durável](docs/assistant-durable-document-analysis.md) acompanha
 lotes em segundo plano e recupera o resultado após reabrir, sem reenviar o pedido.
+A [geração durável](docs/assistant-durable-generation.md) acompanha minutas por
+seções, cancelamento/retomada e proposta completa. O
+[histórico pessoal](docs/assistant-personal-history.md) permite ler/excluir o
+próprio chat após perda de vínculo, com sessão separada.
 
 ## Testes automatizados
 

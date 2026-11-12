@@ -1,5 +1,9 @@
 # Geração durável e minutas por seções
 
+> Registro da etapa indicada neste documento. Funcionalidades e contagens de testes
+> refletem aquele recorte; pendências citadas não substituem o
+> [estado consolidado atual](assistant-implementation-status.md).
+
 Implementação de 2026-11-12. Usa a capacidade opcional `suportaGeracaoDuravel` e os
 contratos do chat v2. A flag correspondente no backend permanece desativada.
 
@@ -32,7 +36,10 @@ Contratos:
 Verificações: 127 testes unitários, build e lint aprovados; 25 testes focados de
 Playwright aprovados, incluindo reabertura durante redação, plano/progresso,
 retomada/cancelamento e aprovação apenas da proposta final. O fluxo anterior sem
-a nova flag também está nessa seleção. A avaliação com modelo real segue pendente.
+a nova flag também está nessa seleção. Posteriormente, a avaliação real reduzida
+do backend passou nos checks de seis interações; memória extensa/análise integral
+e homologação jurídica continuam pendentes. Ver o estado consolidado para os
+resultados atuais e os limites da avaliação sem navegador.
 
 A evidência HTTP/DB, os limites e os detalhes de persistência estão no backend em
 `implementacoes/features/assistente-conversacional/evidencias/e2-e3-geracao-duravel-2026-11-12.md`.
