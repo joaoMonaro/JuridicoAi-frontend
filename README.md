@@ -28,6 +28,13 @@ A etapa de [documentos no chat](docs/assistant-documents.md) integra anexos priv
 fontes do Caso, leitura nativa e progresso. OCR permanece separado e desativado
 até concluir a calibração.
 
+A [consulta documental por etapas](docs/assistant-document-retrieval.md) permite
+buscar e ler trechos de arquivos extensos, com cobertura persistida por resposta.
+A [memória de conversas extensas](docs/assistant-history-memory.md) indica uso de
+resumo e mensagens recentes, preservando o histórico completo e a aprovação visual.
+A [análise documental durável](docs/assistant-durable-document-analysis.md) acompanha
+lotes em segundo plano e recupera o resultado após reabrir, sem reenviar o pedido.
+
 ## Testes automatizados
 
 Os testes unitários e de componentes usam Vitest, jsdom e React Testing

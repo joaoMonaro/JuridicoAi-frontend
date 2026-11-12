@@ -63,7 +63,7 @@ export function useAssistantDocuments(enabled: boolean, conversationId: string |
     } catch (failure) { setError(failure instanceof Error ? failure.message : "Não foi possível baixar o arquivo."); }
   };
   const retry = async (id: string) => {
-    try { await apiRequest(`/assistente/v2/conversas/${conversationId}/anexos/${id}/reprocessar`, { method: "POST" }); await refresh(); }
+    try { await apiFetch(`/assistente/v2/conversas/${conversationId}/anexos/${id}/reprocessar`, { method: "POST" }); await refresh(); }
     catch (failure) { setError(failure instanceof Error ? failure.message : "Não foi possível reprocessar."); }
   };
   return { items, selected, loading, uploading, error, processing, refresh, upload, download, retry,

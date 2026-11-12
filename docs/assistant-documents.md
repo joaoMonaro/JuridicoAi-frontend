@@ -28,6 +28,10 @@ da geração. Há limite explícito de janela de contexto, sem truncamento silen
 arquivos que excedam a janela permanecem salvos. Recuperação extensa por ferramentas
 e memória resumida ainda não estão integradas. Sem exclusão manual nesta etapa.
 
+Atualização: a [consulta documental por ferramentas](assistant-document-retrieval.md)
+está integrada atrás de flag, com busca/leitura por etapas e cobertura. A memória
+resumida e leitura integral extensa com resumos/checkpoints continuam pendentes.
+
 Validação: 114 testes unitários, 20 E2Es focados de conversa/revisão/documentos,
 build e lint. Inclui multipart, espera, seleção dos anexos no pedido e leitura
 parcial. Fluxo adicional com frontend/API/PostgreSQL reais e provedor simulado

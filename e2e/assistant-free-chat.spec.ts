@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import type { JSONContent } from "@tiptap/core";
 import type { StoredMessage } from "../src/features/ai-assistant/conversation-history";
 import type { StoredProposal, ReviewReceipt } from "../src/features/ai-assistant/review/persistent-api";
-import type { AssistantCompletedEvent, AssistantRequest } from "../src/features/ai-assistant/types";
+import type { AssistantCompletedEvent, AssistantDocumentCoverage, AssistantHistoryContext, AssistantDocumentAnalysis, AssistantRequest } from "../src/features/ai-assistant/types";
 
 const caseId = "11111111-1111-1111-1111-111111111111";
 const pieceId = "22222222-2222-2222-2222-222222222222";
@@ -15,9 +15,22 @@ interface FreeRequest { clientRequestId: string; texto: string; versaoPecaEspera
 
 // Model outputs are scripted fixtures here. Intent selection, permissions and
 // transactional publication are exercised separately in the backend tests.
-async function freeApi(page: Page, request: APIRequestContext, outputs: Array<string | null>, chatOnly = false, withDocuments = false) {
+async function freeApi(page: Page, request: APIRequestContext, outputs: Array<string | null>, chatOnly = false, withDocuments = false, coverage?: AssistantDocumentCoverage, historyContext?: AssistantHistoryContext, withAnalysis = false) {
   const messages: StoredMessage[] = []; const proposals: StoredProposal[] = [];
-  const sent: FreeRequest[] = []; let bridgeRegistrations = 0; let applications = 0;
+  const sent: FreeRequest[] = []; let bridgeRegistrations = 0; let applications = 0; let resumes = 0;
+  const analysis: AssistantDocumentAnalysis = { id: randomUUID(), estado: "NaFila", lotesConcluidos: 0, trechosAnalisados: 0,
+    trechosElegiveis: 5, trechosExcluidos: 0, codigoErro: null,
+    fontes: [{ id: randomUUID(), nome: "contrato-extenso.txt", origem: "AnexoPrivado", estado: "Concluido", trechosConsultados: 0, trechosElegiveis: 5, trechosExcluidos: 0, trechosAnalisados: 0 }] };
+  let pendingResult: AssistantCompletedEvent | null = null;
+  let pendingProposal: StoredProposal | null = null;
+  const completeAnalysis = () => {
+    analysis.estado = "Concluida"; analysis.lotesConcluidos = 2; analysis.trechosAnalisados = 5; analysis.fontes[0].trechosAnalisados = 5;
+    const response = messages.find(m => m.analiseDocumentalId === analysis.id)!;
+    response.estado = "Concluida"; response.resultado = pendingResult; response.texto = pendingResult!.sugestao.texto;
+    response.propostaId = pendingProposal?.id ?? null;
+    messages.find(m => m.id === response.respostaAId)!.propostaId = pendingProposal?.id ?? null;
+    if (pendingProposal) proposals.push(pendingProposal);
+  };
   await page.route("**/api/templates-peca", (route) => route.fulfill({ json: [] }));
   await page.route("**/api/assistente/capacidades", async (route) => {
     const response = await route.fetch(); const caps = await response.json();
@@ -28,6 +41,12 @@ async function freeApi(page: Page, request: APIRequestContext, outputs: Array<st
   });
   await page.route("**/api/assistente/v2/**", async (route) => {
     const req = route.request(); const path = new URL(req.url()).pathname;
+    if (path.includes(`/analises/${analysis.id}`)) {
+      const response = messages.find(m => m.analiseDocumentalId === analysis.id);
+      if (path.endsWith("/cancelamento")) { analysis.estado = "Cancelada"; if (response) response.estado = "Cancelada"; return route.fulfill({ status: 204 }); }
+      if (path.endsWith("/retomada")) { resumes++; analysis.estado = "Lendo"; if (response) response.estado = "AguardandoAnalise"; return route.fulfill({ status: 202 }); }
+      return route.fulfill({ json: analysis });
+    }
     if (path.endsWith("/conversa")) return route.fulfill({ json: { id: conversationId } });
     if (path.endsWith("/mensagens") && req.method() === "GET") return route.fulfill({ json: messages });
     if (path.endsWith("/propostas") && req.method() === "GET") return route.fulfill({ json: [...proposals].reverse() });
@@ -49,7 +68,7 @@ async function freeApi(page: Page, request: APIRequestContext, outputs: Array<st
           const previous = proposals.find((p) => p.id === input.propostaReferenciadaId)!;
           previous.estado = "Substituida"; previous.substituidaPorId = proposal.id;
         }
-        proposals.push(proposal);
+        if (!withAnalysis) proposals.push(proposal);
       }
       const result: AssistantCompletedEvent = {
         sugestao: { id: randomUUID(), mensagemUsuarioId: userId, modo: "Perguntar",
@@ -57,6 +76,8 @@ async function freeApi(page: Page, request: APIRequestContext, outputs: Array<st
           texto: proposal ? "Preparei a alteração solicitada para revisão." : chatOnly ? "Posso explicar o conteúdo. A edição não está disponível nesta organização." : "Esta cláusula descreve a obrigação assumida.",
           resumo: "", alertas: [], achados: [], ancora: { from: null, to: null, posicao: null, revisaoEditor: 0, textoOriginal: null } },
         proposta: proposal, uso: { entradaTokens: 1, saidaTokens: 1 }, modelo: "fixture",
+        coberturaDocumental: withAnalysis ? { estado: "Completa", escopoSolicitado: "Todos", limiteAtingido: false,
+          fontes: analysis.fontes.map(source => ({ ...source, trechosAnalisados: source.trechosElegiveis })) } : coverage, contextoHistorico: historyContext,
       };
       const storedRequest: AssistantRequest = { clientRequestId: input.clientRequestId, modo: "Perguntar", instrucao: input.texto,
         versaoPeca: input.versaoPecaEsperada, operacaoPreferida: "ResponderNoPainel", interacaoAutomatica: true,
@@ -65,9 +86,23 @@ async function freeApi(page: Page, request: APIRequestContext, outputs: Array<st
         clientRequestId: input.clientRequestId, criadaEm: new Date().toISOString(), estado: "Concluida", solicitacao: storedRequest },
       { id: answerId, sequencia: sequence + 1, autor: "Assistente", texto: result.sugestao.texto,
         propostaId: proposal?.id ?? null, respostaAId: userId, criadaEm: new Date().toISOString(), estado: "Concluida", resultado: result });
-      return route.fulfill({ contentType: "text/event-stream", body:
-        `id: ${answerId}:1\nevent: solicitacao.iniciada\ndata: ${JSON.stringify({ solicitacaoId: answerId, clientRequestId: input.clientRequestId })}\n\n` +
-        `id: ${answerId}:2\nevent: solicitacao.concluida\ndata: ${JSON.stringify(result)}\n\n` });
+      if (withAnalysis) {
+        pendingResult = result; pendingProposal = proposal;
+        const response = messages[messages.length - 1]; response.estado = "AguardandoAnalise";
+        response.resultado = null; response.propostaId = null; response.texto = ""; response.analiseDocumentalId = analysis.id;
+        messages[messages.length - 2].propostaId = null;
+        return route.fulfill({ contentType: "text/event-stream", body:
+          `id: ${answerId}:1\nevent: solicitacao.iniciada\ndata: ${JSON.stringify({ solicitacaoId: answerId, clientRequestId: input.clientRequestId })}\n\n` +
+          `id: ${answerId}:2\nevent: solicitacao.aguardando\ndata: ${JSON.stringify(analysis)}\n\n` });
+      }
+      const events = [
+        ["solicitacao.iniciada", { solicitacaoId: answerId, clientRequestId: input.clientRequestId }],
+        ...(coverage ? [["contexto.documental", coverage]] : []),
+        ...(historyContext ? [["contexto.historico", historyContext]] : []),
+        ["solicitacao.concluida", result],
+      ];
+      return route.fulfill({ contentType: "text/event-stream", body: events.map(([name, data], index) =>
+        `id: ${answerId}:${index + 1}\nevent: ${name}\ndata: ${JSON.stringify(data)}\n\n`).join("") });
     }
     const application = /\/propostas\/([^/]+)\/aplicacoes$/u.exec(path);
     if (application) {
@@ -89,9 +124,33 @@ async function freeApi(page: Page, request: APIRequestContext, outputs: Array<st
     if (proposalGet) return route.fulfill({ json: proposals.find((p) => p.id === proposalGet[1]) });
     return route.fulfill({ status: 404 });
   });
-  return { sent, messages, proposals, bridgeRegistrations: () => bridgeRegistrations, applications: () => applications };
+  return { sent, messages, proposals, analysis, completeAnalysis, resumes: () => resumes, bridgeRegistrations: () => bridgeRegistrations, applications: () => applications };
 }
 const composer = (page: Page) => page.getByRole("textbox", { name: "O que você quer que a IA faça?" });
+test("consulta seletiva mostra cobertura por arquivo e recupera após reload", async ({ page, request }) => {
+  const coverage: AssistantDocumentCoverage = { estado: "Parcial", escopoSolicitado: "Relevantes", limiteAtingido: false,
+    fontes: [{ id: randomUUID(), nome: "contrato-extenso.txt", origem: "DocumentoCaso", trechosElegiveis: 40, trechosConsultados: 2, trechosExcluidos: 0, estado: "Concluido" }] };
+  await freeApi(page, request, [null], false, false, coverage);
+  await open(page); await send(page, "Qual é o prazo previsto no contrato?");
+  const panel = page.getByRole("region", { name: "Cobertura da consulta documental" });
+  await expect(panel).toContainText("Consulta documental parcial · 2/40 trechos");
+  await panel.getByText("Ver cobertura por arquivo", { exact: true }).click();
+  await expect(panel).toContainText("contrato-extenso.txt");
+  await page.reload(); await page.getByRole("button", { name: "Abrir assistente de IA" }).click();
+  await expect(page.getByRole("region", { name: "Cobertura da consulta documental" })).toContainText("2/40 trechos");
+});
+test("leitura integral incompleta sinaliza limite e não oferece aprovação", async ({ page, request }) => {
+  const coverage: AssistantDocumentCoverage = { estado: "Parcial", escopoSolicitado: "Todos", limiteAtingido: true,
+    fontes: [{ id: randomUUID(), nome: "processo-extenso.txt", origem: "AnexoPrivado", trechosElegiveis: 90, trechosConsultados: 8, trechosExcluidos: 1, estado: "Parcial" }] };
+  const state = await freeApi(page, request, [null], false, false, coverage);
+  const before = await (await request.get(pieceUrl)).json();
+  await open(page); await send(page, "Considere todos os documentos e gere a minuta.");
+  const panel = page.getByRole("region", { name: "Cobertura da consulta documental" });
+  await expect(panel).toContainText("Pedido de leitura de todos os documentos.");
+  await expect(panel).toContainText("A consulta atingiu o limite desta etapa.");
+  expect(state.proposals).toHaveLength(0); expect(state.applications()).toBe(0);
+  expect((await (await request.get(pieceUrl)).json()).versao).toBe(before.versao);
+});
 test("anexo privado aguarda processamento e segue no pedido natural sem outra confirmação", async ({ page, request }) => {
   const state = await freeApi(page, request, [null], false, true);
   const id = randomUUID(); let uploaded = false; let ready = false;
@@ -192,4 +251,81 @@ test("usuário apenas de chat recebe explicação sem controles de aplicação",
   await expect(page.getByText("Posso explicar o conteúdo. A edição não está disponível nesta organização.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Aprovar todas", exact: true })).toHaveCount(0);
   expect(state.proposals).toHaveLength(0);
+});
+
+
+test("contexto resumido fica visível e persiste ao reabrir sem confirmação adicional", async ({ page, request }) => {
+  const context: AssistantHistoryContext = { versaoMemoria: 2, ateSequencia: 80, mensagensRecentes: 16,
+    registrosInvalidados: 1, historicoAdicionalDisponivel: true };
+  const state = await freeApi(page, request, [null], false, false, undefined, context);
+  await open(page); await send(page, "Continue considerando a correção que informei.");
+  await expect(page.getByText("Esta cláusula descreve a obrigação assumida.")).toBeVisible();
+  await page.getByText("Contexto da conversa", { exact: true }).click();
+  await expect(page.getByText(/O histórico completo continua salvo/u)).toBeVisible();
+  await expect(page.getByText(/Parte do resumo foi desconsiderada/u)).toBeVisible();
+  await expect(page.getByText(/Há mensagens antigas ainda fora do resumo/u)).toBeVisible();
+  expect(state.applications()).toBe(0); expect(state.proposals).toHaveLength(0);
+  expect((await (await request.get(pieceUrl)).json()).versao).toBe(1);
+  await page.reload(); await page.getByRole("button", { name: "Abrir assistente de IA" }).click();
+  await page.getByText("Contexto da conversa", { exact: true }).click();
+  await expect(page.getByText(/O histórico completo continua salvo/u)).toBeVisible();
+  await page.screenshot({ path: "test-results/assistant-history-memory.png", fullPage: true });
+});
+
+test("resumo automático preserva revisão visual como única aprovação de alterações", async ({ page, request }) => {
+  const context: AssistantHistoryContext = { versaoMemoria: 3, ateSequencia: 100, mensagensRecentes: 8,
+    registrosInvalidados: 0, historicoAdicionalDisponivel: false };
+  const state = await freeApi(page, request, ["Minuta com o valor corrigido para R$ 750,00."], false, false, undefined, context);
+  await open(page); await send(page, "Gere a minuta com o valor corrigido.");
+  await expect(page.getByRole("button", { name: "Aprovar todas", exact: true })).toBeEnabled();
+  await expect(page.locator(".ProseMirror").locator(":scope > p").first()).toHaveText("Trecho original.");
+  const savedBefore = await (await request.get(pieceUrl)).json();
+  expect(savedBefore.versao).toBe(1);
+  expect(savedBefore.conteudoJson.content[0].content[0].text).toBe("Trecho original.");
+  expect(state.applications()).toBe(0);
+  await page.getByRole("button", { name: "Aprovar todas", exact: true }).click();
+  await expect(page.locator(".ProseMirror")).toHaveText("Minuta com o valor corrigido para R$ 750,00.");
+  expect(state.applications()).toBe(1);
+});
+
+
+test("análise continua ao reabrir e prepara a revisão sem outro pedido do usuário", async ({ page, request }) => {
+  const state = await freeApi(page, request, ["Minuta após análise de todos os documentos."], false, false, undefined, undefined, true);
+  await open(page); await send(page, "Analise todos os documentos e prepare a minuta.");
+  await expect(page.getByText("Análise documental na fila", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Você pode fechar esta tela/u)).toBeVisible();
+  expect(state.sent).toHaveLength(1); expect(state.applications()).toBe(0);
+  await page.reload(); await page.getByRole("button", { name: "Abrir assistente de IA" }).click();
+  await expect(page.getByText("Análise documental na fila", { exact: true })).toBeVisible();
+  state.analysis.estado = "Lendo"; state.analysis.trechosAnalisados = 2; state.analysis.lotesConcluidos = 1; state.analysis.fontes[0].trechosAnalisados = 2;
+  await expect(page.getByText(/2\/5 trechos analisados/u)).toBeVisible();
+  await page.screenshot({ path: "test-results/assistant-durable-analysis.png", fullPage: true });
+  state.completeAnalysis();
+  await expect(page.getByRole("button", { name: "Aprovar todas", exact: true })).toBeEnabled();
+  expect(state.sent).toHaveLength(1); expect(state.applications()).toBe(0);
+  const before = await (await request.get(pieceUrl)).json(); expect(before.versao).toBe(1);
+  expect(before.conteudoJson.content[0].content[0].text).toBe("Trecho original.");
+  await page.getByRole("button", { name: "Aprovar todas", exact: true }).click();
+  await expect(page.locator(".ProseMirror")).toHaveText("Minuta após análise de todos os documentos.");
+  expect(state.applications()).toBe(1);
+});
+
+test("cancelar análise preserva o pedido e libera a conversa sem aplicar a peça", async ({ page, request }) => {
+  const state = await freeApi(page, request, [null], false, false, undefined, undefined, true);
+  await open(page); await send(page, "Analise todos os documentos.");
+  await page.getByRole("button", { name: "Cancelar análise", exact: true }).click();
+  await expect(page.getByText("Análise documental cancelada", { exact: true })).toBeVisible();
+  await expect(composer(page)).toBeEnabled();
+  expect(state.messages).toHaveLength(2); expect(state.applications()).toBe(0); expect(state.sent).toHaveLength(1);
+});
+
+test("retomada de análise interrompida reaproveita o pedido sem reenviar a mensagem", async ({ page, request }) => {
+  const state = await freeApi(page, request, [null], false, false, undefined, undefined, true);
+  await open(page); await send(page, "Analise todos os documentos.");
+  await expect(page.getByText("Análise documental na fila", { exact: true })).toBeVisible();
+  state.analysis.estado = "Interrompida"; state.analysis.codigoErro = "AI_ANALYSIS_CALL_UNCERTAIN";
+  state.messages[1].estado = "Interrompida";
+  await page.getByRole("button", { name: "Retomar análise", exact: true }).click();
+  await expect(page.getByText("Analisando documentos por etapas", { exact: true })).toBeVisible();
+  expect(state.resumes()).toBe(1); expect(state.sent).toHaveLength(1);
 });

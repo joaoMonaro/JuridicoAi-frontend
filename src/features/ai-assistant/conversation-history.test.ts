@@ -10,6 +10,27 @@ const messages: StoredMessage[] = [
 ];
 
 describe("histórico da conversa", () => {
+  it("recupera análise em andamento e deixa a conclusão persistida substituir o estado local", () => {
+    const pending = [messages[0], { ...messages[1], estado: "AguardandoAnalise", resultado: null, analiseDocumentalId: "analysis-1" }];
+    const [turn] = historyTurns(pending);
+    expect(turn.status).toBe("analyzing"); expect(turn.analysisId).toBe("analysis-1");
+    const saved = [messages[0], { ...messages[1], analiseDocumentalId: "analysis-1" }];
+    const [done] = mergeHistory(saved, [turn]);
+    expect(done.status).toBe("completed"); expect(done.completed?.sugestao.texto).toBe("Primeira resposta");
+  });
+  it("recupera a versão de contexto mesmo quando a geração foi interrompida", () => {
+    const context = { versaoMemoria: 2, ateSequencia: 80, mensagensRecentes: 16, registrosInvalidados: 1, historicoAdicionalDisponivel: false };
+    const stored = [messages[0], { ...messages[1], estado: "Interrompida", resultado: null, contextoHistorico: context }];
+    const [turn] = historyTurns(stored);
+    expect(turn.status).toBe("error"); expect(turn.historyContext).toEqual(context);
+    expect(mergeHistory(stored, [{ ...turn, historyContext: null }])[0].historyContext).toEqual(context);
+  });
+  it("recupera cobertura parcial de resposta interrompida sem resultado final", () => {
+    const coverage = { estado: "Parcial" as const, escopoSolicitado: "Todos" as const, limiteAtingido: false,
+      fontes: [{ id: "source", nome: "contrato.txt", origem: "AnexoPrivado", trechosElegiveis: 10, trechosConsultados: 2, trechosExcluidos: 0, estado: "Concluido" }] };
+    const [turn] = historyTurns([messages[0], { ...messages[1], resultado: null, estado: "Interrompida", coberturaDocumental: coverage }]);
+    expect(turn.status).toBe("error"); expect(turn.coverage).toEqual(coverage);
+  });
   it("recupera resultado estruturado com estado histórico, sem reaproveitar autorização de edição", () => {
     const [turn] = historyTurns([...messages].reverse());
     expect(turn.instruction).toBe("A contratante é Ana");

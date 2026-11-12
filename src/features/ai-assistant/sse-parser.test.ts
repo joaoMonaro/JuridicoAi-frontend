@@ -59,6 +59,59 @@ describe("SseParser", () => {
 });
 
 describe("consumeAssistantEventStream", () => {
+  it("encerra a conexão de forma válida quando o servidor assume a análise durável", async () => {
+    const progress = { id: "analysis-1", estado: "NaFila", lotesConcluidos: 0, trechosAnalisados: 0,
+      trechosElegiveis: 5, trechosExcluidos: 1, codigoErro: null,
+      fontes: [{ id: "doc", nome: "contrato.txt", origem: "AnexoPrivado", estado: "Parcial", trechosConsultados: 0, trechosAnalisados: 0, trechosElegiveis: 5, trechosExcluidos: 1 }] };
+    const waiting = vi.fn(); const done = vi.fn();
+    await consumeAssistantEventStream(streamOf(
+      sse("solicitacao.iniciada", { solicitacaoId: "sol-1", clientRequestId: "req-1" }, 1) +
+      sse("solicitacao.aguardando", progress, 2)), { onWaiting: waiting, onCompleted: done }, 200);
+    expect(waiting).toHaveBeenCalledWith(progress); expect(done).not.toHaveBeenCalled();
+  });
+  it("recusa cobertura de análise maior que a quantidade de trechos elegíveis", async () => {
+    const progress = { id: "analysis-1", estado: "Lendo", lotesConcluidos: 1, trechosAnalisados: 6,
+      trechosElegiveis: 5, trechosExcluidos: 0, codigoErro: null, fontes: [] };
+    await expect(consumeAssistantEventStream(streamOf(
+      sse("solicitacao.iniciada", { solicitacaoId: "sol-1", clientRequestId: "req-1" }, 1) +
+      sse("solicitacao.aguardando", progress, 2)), { onCompleted: vi.fn() }, 200)).rejects.toMatchObject({ code: "AI_STREAM_INVALID" });
+  });
+  it("processa resumo e consulta do histórico como progresso, mantendo conclusão obrigatória", async () => {
+    const context = { versaoMemoria: 2, ateSequencia: 80, mensagensRecentes: 16, registrosInvalidados: 1, historicoAdicionalDisponivel: true };
+    const progress = vi.fn(); const done = vi.fn();
+    await consumeAssistantEventStream(streamOf(
+      sse("solicitacao.iniciada", { solicitacaoId: "sol-1", clientRequestId: "req-1" }, 1) +
+      sse("contexto.historico", context, 2) + sse("solicitacao.concluida", { ...completedEvent, contextoHistorico: context }, 3)),
+      { onHistoryContext: progress, onCompleted: done }, 200);
+    expect(progress).toHaveBeenCalledWith(context); expect(done).toHaveBeenCalledOnce();
+    await expect(consumeAssistantEventStream(streamOf(
+      sse("solicitacao.iniciada", { solicitacaoId: "sol-1", clientRequestId: "req-1" }, 1) + sse("contexto.historico", context, 2)),
+      { onCompleted: vi.fn() }, 200)).rejects.toMatchObject({ code: "AI_STREAM_INCOMPLETE" });
+  });
+  it.each([-1, 1.5, "2"])("recusa versão de memória inválida: %s", async version => {
+    const context = { versaoMemoria: version, ateSequencia: 80, mensagensRecentes: 16, registrosInvalidados: 0, historicoAdicionalDisponivel: false };
+    await expect(consumeAssistantEventStream(streamOf(
+      sse("solicitacao.iniciada", { solicitacaoId: "sol-1", clientRequestId: "req-1" }, 1) + sse("contexto.historico", context, 2)),
+      { onCompleted: vi.fn() }, 200)).rejects.toMatchObject({ code: "AI_STREAM_INVALID" });
+  });
+  it("processa cobertura documental como progresso antes da conclusão", async () => {
+    const progress = vi.fn(); const done = vi.fn();
+    const coverage = { estado: "Parcial", escopoSolicitado: "Relevantes", limiteAtingido: false,
+      fontes: [{ id: "source", nome: "contrato.txt", origem: "AnexoPrivado", trechosElegiveis: 10, trechosConsultados: 2, trechosExcluidos: 0, estado: "Concluido" }] };
+    await consumeAssistantEventStream(streamOf(
+      sse("solicitacao.iniciada", { solicitacaoId: "sol-1", clientRequestId: "req-1" }, 1) +
+      sse("contexto.documental", coverage, 2) + sse("solicitacao.concluida", { ...completedEvent, coberturaDocumental: coverage }, 3)),
+    { onDocumentCoverage: progress, onCompleted: done }, 200);
+    expect(progress).toHaveBeenCalledWith(coverage); expect(done).toHaveBeenCalledOnce();
+    expect(progress.mock.invocationCallOrder[0]).toBeLessThan(done.mock.invocationCallOrder[0]);
+  });
+  it.each([-1, 11])("recusa contagem de cobertura inválida: %s", async consulted => {
+    const coverage = { estado: "Parcial", escopoSolicitado: "Relevantes", limiteAtingido: false,
+      fontes: [{ id: "source", nome: "contrato.txt", origem: "AnexoPrivado", trechosElegiveis: 10, trechosConsultados: consulted, trechosExcluidos: 0, estado: "Concluido" }] };
+    await expect(consumeAssistantEventStream(streamOf(
+      sse("solicitacao.iniciada", { solicitacaoId: "sol-1", clientRequestId: "req-1" }, 1) + sse("contexto.documental", coverage, 2)),
+    { onCompleted: vi.fn() }, 200)).rejects.toMatchObject({ code: "AI_STREAM_INVALID" });
+  });
   it("processa início, delta e conclusão em ordem", async () => {
     const calls: string[] = [];
     const handlers: AssistantStreamHandlers = {

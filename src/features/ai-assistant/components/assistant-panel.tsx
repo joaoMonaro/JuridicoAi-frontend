@@ -38,6 +38,9 @@ import type { StoredProposal } from "../review/persistent-api";
 import { AutomaticProposalResult } from "./automatic-proposal-result";
 import { useAssistantDocuments } from "../use-assistant-documents";
 import { AssistantDocuments } from "./assistant-documents";
+import { DocumentAnalysis } from "./document-analysis";
+import { HistoryContext } from "./history-context";
+import { DocumentCoverage } from "./document-coverage";
 
 interface Props {
   open: boolean;
@@ -137,6 +140,19 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
 
   const turns = useMemo(() => capabilities.suportaHistorico ? mergeHistory(history.messages, conversations[peca.id] ?? []) : conversations[peca.id] ?? [], [conversations, peca.id, capabilities.suportaHistorico, history.messages]);
   const activeTurn = activeTurnId ? turns.find((turn) => turn.id === activeTurnId) : null;
+  const pendingAnalyses = useRef(new Set<string>());
+  const openedAnalyses = useRef(new Set<string>());
+  useEffect(() => {
+    if (!open) return;
+    for (const turn of turns) {
+      if (!turn.analysisId) continue;
+      if (turn.status === "analyzing") pendingAnalyses.current.add(turn.analysisId);
+      if (turn.completed?.proposta && pendingAnalyses.current.has(turn.analysisId) && !openedAnalyses.current.has(turn.analysisId)) {
+        openedAnalyses.current.add(turn.analysisId);
+        onPreparedProposal?.(turn.completed.proposta);
+      }
+    }
+  }, [open, turns, onPreparedProposal]);
   const busy = preparing || activeTurn?.status === "sending" || activeTurn?.status === "streaming";
   const historyBlocked = capabilities.suportaHistorico && (history.loading || Boolean(history.error) || !history.conversationId || history.generating);
   const free = capabilities.suportaConversaLivre === true;
@@ -388,6 +404,13 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
           ...current,
           streamedText: current.streamedText + delta,
         })),
+        onWaiting: analysis => {
+          pendingAnalyses.current.add(analysis.id);
+          updateTurn(clientRequestId, current => ({ ...current, status: "analyzing", analysisId: analysis.id }));
+          if (!draftOverride) { setInstruction(""); setAdditionalContext(""); }
+        },
+        onHistoryContext: historyContext => updateTurn(clientRequestId, current => ({ ...current, historyContext })),
+        onDocumentCoverage: coverage => updateTurn(clientRequestId, current => ({ ...current, coverage })),
         onCompleted: (event) => {
           updateTurn(clientRequestId, (current) => ({
             ...current,
@@ -582,6 +605,8 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
         {turns.map((turn) => <ConversationTurnView
           key={turn.id}
           turn={turn}
+          conversationId={history.conversationId}
+          onRefreshHistory={history.refresh}
           contexts={contexts ?? []}
           editor={editor}
           editorRevision={editorRevision}
@@ -689,6 +714,8 @@ function ConversationEmptyState() {
 }
 
 interface ConversationTurnProps {
+  conversationId: string | null;
+  onRefreshHistory: () => Promise<void>;
   turn: ConversationTurn;
   contexts: ContextoCaso[];
   editor: Editor | null;
@@ -706,7 +733,7 @@ interface ConversationTurnProps {
   onOpenProposal: () => void;
 }
 
-function ConversationTurnView({ turn, contexts, editor, editorRevision, saveState, canDevelop, reviewInDocument, onTextChange, onApply, onReject, onRetry, onCopy, onDevelop, currentProposal, onOpenProposal }: ConversationTurnProps) {
+function ConversationTurnView({ turn, conversationId, onRefreshHistory, contexts, editor, editorRevision, saveState, canDevelop, reviewInDocument, onTextChange, onApply, onReject, onRetry, onCopy, onDevelop, currentProposal, onOpenProposal }: ConversationTurnProps) {
   const suggestion = turn.completed?.sugestao ?? null;
   const anchorValid = useMemo(
     () => Boolean(editor && suggestion && isSuggestionAnchorValid(editor, suggestion, editorRevision)),
@@ -761,6 +788,12 @@ function ConversationTurnView({ turn, contexts, editor, editorRevision, saveStat
           canDevelop={canDevelop}
         />}
       </> : null}
+      {turn.analysisId && conversationId ? <DocumentAnalysis conversationId={conversationId} analysisId={turn.analysisId} onTerminal={onRefreshHistory} /> : null}
+      {turn.completed?.contextoHistorico || turn.historyContext ? <HistoryContext
+        context={(turn.completed?.contextoHistorico ?? turn.historyContext)!} /> : null}
+      {turn.completed?.coberturaDocumental || turn.coverage ? <DocumentCoverage
+        coverage={(turn.completed?.coberturaDocumental ?? turn.coverage)!}
+        running={turn.status === "sending" || turn.status === "streaming"} /> : null}
     </div>
   </article>;
 }

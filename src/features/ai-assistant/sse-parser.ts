@@ -2,6 +2,9 @@ import type {
   AssistantCompletedEvent,
   AssistantFailureEvent,
   AssistantStreamHandlers,
+  AssistantDocumentCoverage,
+  AssistantHistoryContext,
+  AssistantDocumentAnalysis,
 } from "@/features/ai-assistant/types";
 import { ApiError } from "@/lib/api-client";
 
@@ -102,7 +105,22 @@ export async function consumeAssistantEventStream(
       return;
     }
 
+    if (event.event === "contexto.historico") {
+      if (!isHistoryContext(data)) throw invalidStream(responseStatus);
+      handlers.onHistoryContext?.(data);
+      return;
+    }
+    if (event.event === "contexto.documental") {
+      if (!isDocumentCoverage(data)) throw invalidStream(responseStatus);
+      handlers.onDocumentCoverage?.(data);
+      return;
+    }
     terminalReceived = true;
+    if (event.event === "solicitacao.aguardando") {
+      if (!isDocumentAnalysis(data)) throw invalidStream(responseStatus);
+      handlers.onWaiting?.(data);
+      return;
+    }
     if (event.event === "solicitacao.concluida") {
       if (!isCompletedEvent(data)) throw invalidStream(responseStatus);
       handlers.onCompleted(data);
@@ -175,7 +193,8 @@ function parseEvent(lines: string[]): SseEvent | null {
 
 function isAssistantEvent(event: string): boolean {
   return event === "solicitacao.iniciada" || event === "conteudo.delta" ||
-    event === "solicitacao.concluida" || event === "solicitacao.falhou";
+    event === "contexto.documental" || event === "contexto.historico" ||
+    event === "solicitacao.concluida" || event === "solicitacao.falhou" || event === "solicitacao.aguardando";
 }
 
 function parseEventIdentity(value: string | null): { requestId: string; sequence: number } | null {
@@ -201,7 +220,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isCompletedEvent(value: unknown): value is AssistantCompletedEvent {
-  return isRecord(value) && isRecord(value.sugestao) && isRecord(value.uso) && typeof value.modelo === "string";
+  return isRecord(value) && isRecord(value.sugestao) && isRecord(value.uso) && typeof value.modelo === "string" &&
+    (value.coberturaDocumental == null || isDocumentCoverage(value.coberturaDocumental)) &&
+    (value.contextoHistorico == null || isHistoryContext(value.contextoHistorico));
+}
+
+function isHistoryContext(value: unknown): value is AssistantHistoryContext {
+  const count = (n: unknown) => typeof n === "number" && Number.isSafeInteger(n) && n >= 0;
+  return isRecord(value) && (value.versaoMemoria === null || count(value.versaoMemoria) && Number(value.versaoMemoria) > 0) &&
+    count(value.ateSequencia) && count(value.mensagensRecentes) && count(value.registrosInvalidados) &&
+    typeof value.historicoAdicionalDisponivel === "boolean";
+}
+
+function isDocumentCoverage(value: unknown): value is AssistantDocumentCoverage {
+  const count = (n: unknown) => typeof n === "number" && Number.isSafeInteger(n) && n >= 0;
+  return isRecord(value) && ["Completa", "Parcial"].includes(String(value.estado)) &&
+    ["Todos", "Relevantes"].includes(String(value.escopoSolicitado)) && typeof value.limiteAtingido === "boolean" &&
+    Array.isArray(value.fontes) && value.fontes.length <= 250 && value.fontes.every(source => isRecord(source) &&
+      typeof source.id === "string" && typeof source.nome === "string" && typeof source.origem === "string" &&
+      typeof source.estado === "string" && count(source.trechosElegiveis) && count(source.trechosConsultados) &&
+      (source.trechosAnalisados == null || count(source.trechosAnalisados) && Number(source.trechosAnalisados) <= Number(source.trechosElegiveis)) &&
+      count(source.trechosExcluidos) && Number(source.trechosConsultados) <= Number(source.trechosElegiveis));
 }
 
 function isFailureEvent(value: unknown): value is AssistantFailureEvent {
@@ -215,4 +254,13 @@ function invalidStream(responseStatus: number): ApiError {
     responseStatus,
     "AI_STREAM_INVALID",
   );
+}
+
+export function isDocumentAnalysis(value: unknown): value is AssistantDocumentAnalysis {
+  const count = (n: unknown) => typeof n === "number" && Number.isSafeInteger(n) && n >= 0;
+  return isRecord(value) && typeof value.id === "string" && value.id.length > 0 &&
+    ["NaFila", "Lendo", "Consolidando", "Pronta", "PreparandoResposta", "Concluida", "Incompleta", "Interrompida", "Cancelada", "Desatualizada"].includes(String(value.estado)) &&
+    count(value.lotesConcluidos) && count(value.trechosAnalisados) && count(value.trechosElegiveis) && count(value.trechosExcluidos) &&
+    Number(value.trechosAnalisados) <= Number(value.trechosElegiveis) && (value.codigoErro === null || typeof value.codigoErro === "string") &&
+    isDocumentCoverage({ estado: "Parcial", escopoSolicitado: "Todos", limiteAtingido: false, fontes: value.fontes });
 }

@@ -101,7 +101,17 @@ export interface AssistantSuggestion {
   };
 }
 
+export interface AssistantHistoryContext {
+  versaoMemoria: number | null;
+  ateSequencia: number;
+  mensagensRecentes: number;
+  registrosInvalidados: number;
+  historicoAdicionalDisponivel: boolean;
+}
+
 export interface AssistantCompletedEvent {
+  contextoHistorico?: AssistantHistoryContext | null;
+  coberturaDocumental?: AssistantDocumentCoverage | null;
   proposta?: import("./review/persistent-api").StoredProposal | null;
   sugestao: AssistantSuggestion;
   uso: {
@@ -118,8 +128,27 @@ export interface AssistantFailureEvent {
   requestId: string | null;
 }
 
+export interface AssistantDocumentAnalysis {
+  id: string;
+  estado: "NaFila" | "Lendo" | "Consolidando" | "Pronta" | "PreparandoResposta" | "Concluida" | "Incompleta" | "Interrompida" | "Cancelada" | "Desatualizada";
+  lotesConcluidos: number; trechosAnalisados: number; trechosElegiveis: number; trechosExcluidos: number;
+  codigoErro: string | null;
+  fontes: AssistantDocumentCoverage["fontes"];
+}
+
 export interface AssistantStreamHandlers {
+  onWaiting?: (analysis: AssistantDocumentAnalysis) => void;
+  onHistoryContext?: (context: AssistantHistoryContext) => void;
+  onDocumentCoverage?: (coverage: AssistantDocumentCoverage) => void;
   onStarted?: (event: { solicitacaoId: string; clientRequestId: string }) => void;
   onDelta?: (delta: string) => void;
   onCompleted: (event: AssistantCompletedEvent) => void;
+}
+
+export interface AssistantDocumentCoverage {
+  estado: "Completa" | "Parcial";
+  escopoSolicitado: "Relevantes" | "Todos";
+  limiteAtingido: boolean;
+  fontes: { id: string; nome: string; origem: string; trechosElegiveis: number; trechosConsultados: number;
+    trechosExcluidos: number; estado: string; trechosAnalisados?: number }[];
 }
