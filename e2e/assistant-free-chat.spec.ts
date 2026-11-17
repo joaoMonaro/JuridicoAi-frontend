@@ -11,7 +11,7 @@ const pieceId = "22222222-2222-2222-2222-222222222222";
 const base = fakeApiUrl;
 const pieceUrl = `${base}/api/pecas/${pieceId}`;
 const conversationId = "66666666-6666-4666-8666-666666666666";
-interface FreeRequest { clientRequestId: string; texto: string; versaoPecaEsperada: number; propostaReferenciadaId: string | null; selecao: unknown; anexoIds?: string[] }
+interface FreeRequest { clientRequestId: string; texto: string; versaoPecaEsperada: number; propostaReferenciadaId?: string | null; anexoIds?: string[] }
 
 // Model outputs are scripted fixtures here. Intent selection, permissions and
 // transactional publication are exercised separately in the backend tests.
@@ -165,7 +165,7 @@ test("anexo privado aguarda processamento e segue no pedido natural sem outra co
   await page.route("**/api/assistente/v2/conversas/*/anexos", async route => {
     if (route.request().method() === "POST") {
       expect(route.request().headers()["content-type"]).toContain("multipart/form-data"); uploaded = true;
-      return route.fulfill({ status: 202, json: { id } });
+      return route.fulfill({ status: 202, json: { id, origem: "AnexoPrivado" } });
     }
     return route.fulfill({ json: uploaded ? [{ id, nome: "relato.txt", origem: "AnexoPrivado", formato: "txt", tamanhoBytes: 30,
       estado: ready ? "Concluido" : "Processando", paginasTotal: null, paginasConcluidas: 0,
@@ -185,7 +185,7 @@ test("anexo privado aguarda processamento e segue no pedido natural sem outra co
 test("leitura parcial mostra a região excluída e mantém a conversa disponível", async ({ page, request }) => {
   await freeApi(page, request, [null], false, true);
   await page.route("**/api/assistente/v2/conversas/*/anexos", route => route.fulfill({ json: [{
-    id: randomUUID(), nome: "prova.pdf", origem: "DocumentoCaso", formato: "pdf", tamanhoBytes: 100,
+    id: randomUUID(), nome: "prova.pdf", origem: "AnexoPrivado", formato: "pdf", tamanhoBytes: 100,
     estado: "Parcial", paginasTotal: 2, paginasConcluidas: 2, trechosConfiaveis: 1, trechosExcluidos: 1,
     codigoErro: null, vinculado: true, problemas: [{ pagina: 2, localizador: "página 2", codigo: "OCR_NOT_CALIBRATED" }],
   }] }));
@@ -229,6 +229,38 @@ test("pedido natural abre a comparação diretamente e só a aprovação altera 
   expect(state.messages).toHaveLength(2); expect(state.applications()).toBe(1);
   await page.reload(); await page.getByRole("button", { name: "Abrir assistente de IA" }).click();
   await expect(page.getByRole("region", { name: "Proposta de alterações da IA" })).toBeVisible();
+});
+
+test("painel usa mensagem única e ignora seleção do editor", async ({ page, request }) => {
+  const state = await freeApi(page, request, [null]);
+  await page.goto(`/casos/${caseId}`);
+  const editor = page.locator(".ProseMirror");
+  await editor.click(); await page.keyboard.press("Control+A");
+  await page.getByRole("button", { name: "Abrir assistente de IA" }).click();
+  await expect(composer(page)).toBeEnabled();
+  for (const name of ["Criar minuta", "Melhorar redação", "Explicar trecho", "Reescrever", "Expandir", "Revisar", "Novo trecho", "Desenvolver"])
+    await expect(page.getByRole("button", { name, exact: true })).toHaveCount(0);
+  await expect(page.getByText("+ Adicionar contexto", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Contextos do próximo pedido")).toHaveCount(0);
+  await page.screenshot({ path: "/tmp/juridicoai-chat-simplificado.png", fullPage: true });
+  await send(page, "Explique o parágrafo inicial.");
+  await expect(page.getByRole("heading", { name: "Explicação", exact: true })).toBeVisible();
+  expect(Object.keys(state.sent[0]).sort()).toEqual(["clientRequestId", "propostaReferenciadaId", "texto", "versaoPecaEsperada"]);
+  expect(state.applications()).toBe(0);
+  await expect(editor).toHaveText("Trecho original.");
+});
+
+test("materiais antigos do Caso não aparecem automaticamente entre os anexos", async ({ page, request }) => {
+  await freeApi(page, request, [null], false, true);
+  await page.route("**/api/assistente/v2/conversas/*/anexos", route => route.fulfill({ json: [{
+    id: randomUUID(), nome: "material-antigo-reservado.pdf", origem: "DocumentoCaso", formato: "pdf", tamanhoBytes: 100,
+    estado: "Processando", paginasTotal: 2, paginasConcluidas: 0, trechosConfiaveis: 0, trechosExcluidos: 0,
+    codigoErro: null, vinculado: true, problemas: [],
+  }] }));
+  await open(page);
+  await expect(page.getByText("material-antigo-reservado.pdf", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Lendo documento", { exact: true })).toHaveCount(0);
+  await expect(composer(page)).toBeEnabled();
 });
 
 test("pedido informativo responde sem criar proposta nem exigir modo", async ({ page, request }) => {

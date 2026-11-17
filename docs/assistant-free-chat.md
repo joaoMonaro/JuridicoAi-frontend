@@ -5,8 +5,9 @@
 > [estado consolidado atual](assistant-implementation-status.md).
 
 A capacidade `suportaConversaLivre` ativa o fluxo sem modos técnicos. Ela exige
-as flags de revisão, histórico e `AssistenteIa:AutomaticConversationEnabled` no
-backend, todas desligadas por padrão. Aplicar as três migrations antes de ativar:
+as flags de revisão e histórico no backend, desligadas por padrão.
+A flag separada de conversa livre foi removida em 2026-11-17; no fluxo
+conversacional a intenção natural passou a ser o comportamento padrão. Aplicar as três migrations antes de ativar:
 `AddAssistantReviewWorkspace`, `PersistAssistantConversationMessages` e
 `TrackSupersededAssistantProposals`.
 

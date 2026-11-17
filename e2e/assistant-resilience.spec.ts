@@ -1,138 +1,76 @@
-import { fakeApiUrl } from "./support/urls";
 import { expect, test } from "@playwright/test";
-import type { APIRequestContext, Page } from "@playwright/test";
+import { fakeApiUrl } from "./support/urls";
+import { approval, caretAtEnd, composer, configure, openChat, pieceId, readyEdit, send, setup, startEdit } from "./support/simple-chat";
 
-const caseId = "11111111-1111-1111-1111-111111111111";
-
-test.beforeEach(async ({ page, request }) => {
-  await request.post(`${fakeApiUrl}/__e2e/reset`);
-  await page.addInitScript(() => {
-    window.sessionStorage.setItem("juridicoai.auth-session", JSON.stringify({
-      accessToken: "token-e2e-ficticio",
-      expiresIn: 3_600,
-      expiresAt: Date.now() + 3_600_000,
-      user: { id: "user-e2e", nome: "Usuário E2E", email: "e2e@example.test" },
-      organization: { id: "org-e2e", nome: "Organização E2E" },
-      role: "Owner",
-    }));
-  });
-});
+test.beforeEach(async ({ page, request }) => setup(page, request));
 
 test("cancelar durante o stream mantém o documento intacto", async ({ page, request }) => {
-  await configureScenario(request, { assistant: "slow" });
-  const editor = await submitRewrite(page);
-
+  await configure(request, { assistant: "slow" }); const editor = await startEdit(page, request);
   await expect(page.getByText("A IA está elaborando a resposta...", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Cancelar", exact: true }).click();
-
   await expect(page.getByRole("alert")).toContainText("Solicitação cancelada.");
-  await expect(page.getByRole("heading", { name: "Trecho revisado" })).not.toBeVisible();
-  await expect(editor).toHaveText("Trecho original.");
-
-  await page.waitForTimeout(1_700);
-  await expect(page.getByRole("heading", { name: "Trecho revisado" })).not.toBeVisible();
-  await expect(editor).toHaveText("Trecho original.");
+  await page.waitForTimeout(1700);
+  await expect(approval(page)).toHaveCount(0); await expect(editor).toHaveText("Trecho original.");
 });
 
-test("editar durante a geração expira a âncora e bloqueia a aplicação", async ({ page, request }) => {
-  await configureScenario(request, { assistant: "slow" });
-  const editor = await submitRewrite(page);
-
+test("edição local durante a geração impede carregar proposta sobre outra versão", async ({ page, request }) => {
+  await configure(request, { assistant: "slow" }); const editor = await startEdit(page, request);
   await expect(page.getByText("A IA está elaborando a resposta...", { exact: true })).toBeVisible();
-  await editor.evaluate((element) => {
-    const range = document.createRange();
-    range.selectNodeContents(element);
-    range.collapse(false);
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-    (element as HTMLElement).focus();
-  });
-  await page.keyboard.type(" Alteração local.");
-
+  await caretAtEnd(editor); await page.keyboard.type(" Alteração local.");
   await expect(page.getByRole("heading", { name: "Trecho revisado" })).toBeVisible();
-  await expect(page.getByText(/O documento mudou desde o envio/)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Substituir seleção" })).toBeDisabled();
   await expect(editor).toContainText("Trecho original. Alteração local.");
-  await expect(editor).not.toContainText("Trecho jurídico revisado pela IA.");
+  await expect(approval(page)).toHaveCount(0);
+  await expect(page.getByText("O documento mudou desde a preparação da proposta.", { exact: true })).toBeVisible();
 });
 
-test("erro do provedor preserva o texto e permite tentar novamente", async ({ page, request }) => {
-  await configureScenario(request, { assistant: "error" });
-  const editor = await submitRewrite(page);
-
+test("erro do provedor preserva pedido e permite novo envio explícito", async ({ page, request }) => {
+  await configure(request, { assistant: "error" }); await startEdit(page, request);
   await expect(page.getByRole("alert")).toContainText("O provedor de IA está temporariamente indisponível.");
-  await expect(page.getByRole("button", { name: "Enviar para IA" })).toBeEnabled();
-  await expect(page.getByRole("heading", { name: "Trecho revisado" })).not.toBeVisible();
-  await expect(editor).toHaveText("Trecho original.");
+  await expect(composer(page)).toHaveValue("Reescreva o primeiro parágrafo preservando os fatos.");
+  await configure(request, { assistant: "success" }); await page.getByRole("button", { name: "Enviar para IA" }).click();
+  await expect(approval(page)).toBeEnabled(); expect((await (await request.get(`${fakeApiUrl}/api/pecas/${pieceId}`)).json()).conteudoJson.content[0].content[0].text).toBe("Trecho original.");
 });
 
-test("erro de autosave bloqueia a aplicação e retry restaura o fluxo", async ({ page, request }) => {
-  const editor = await submitRewrite(page);
-  await expect(page.getByRole("heading", { name: "Trecho revisado" })).toBeVisible();
-
-  await configureScenario(request, { autosave: "error" });
-  await page.getByLabel("Status da peça").selectOption("Finalizada");
-  await expect(page.getByRole("button", { name: "Substituir seleção" })).toBeDisabled();
-
-  const failedSave = page.waitForResponse(isPiecePatch);
-  await page.getByRole("button", { name: "Salvar peça" }).click();
-  expect((await failedSave).status()).toBe(500);
-
+test("falha de salvamento bloqueia envio e recuperação permite usar versão salva", async ({ page, request }) => {
+  const editor = await openChat(page); await configure(request, { autosave: "error", reply: "edit" });
+  await caretAtEnd(editor); await page.keyboard.type(" Alteração manual.");
+  await send(page, "Reescreva o primeiro parágrafo.");
   await expect(page.getByText("Erro ao salvar", { exact: true })).toBeVisible();
-  await expect(page.getByText(/sugestões da IA não podem ser aplicadas/)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Substituir seleção" })).toBeDisabled();
-
-  await configureScenario(request, { autosave: "success" });
-  const retriedSave = page.waitForResponse(isPiecePatch);
+  await expect(approval(page)).toHaveCount(0); await expect(composer(page)).toHaveValue("Reescreva o primeiro parágrafo.");
+  await configure(request, { autosave: "success" });
   await page.getByRole("button", { name: "Salvar", exact: true }).click();
-  expect((await retriedSave).status()).toBe(200);
-
   await expect(page.getByText("Salvo", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Substituir seleção" })).toBeEnabled();
-  await page.getByRole("button", { name: "Substituir seleção" }).click();
-  await expect(editor).toHaveText("Trecho jurídico revisado pela IA.");
-});
-
-test("conflito de versão bloqueia a aplicação e orienta recarregar", async ({ page, request }) => {
-  const editor = await submitRewrite(page);
-  await expect(page.getByRole("heading", { name: "Trecho revisado" })).toBeVisible();
-
-  await configureScenario(request, { autosave: "conflict" });
-  await page.getByLabel("Status da peça").selectOption("Finalizada");
-
-  const conflictedSave = page.waitForResponse(isPiecePatch);
-  await page.getByRole("button", { name: "Salvar peça" }).click();
-  expect((await conflictedSave).status()).toBe(409);
-
-  await expect(page.getByText("Conflito de versão", { exact: true })).toBeVisible();
-  await expect(page.getByText(/Esta peça foi alterada em outra sessão/)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Recarregar versão mais recente" })).toBeVisible();
-  await expect(page.getByText(/Resolva o conflito da Peça/)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Substituir seleção" })).toBeDisabled();
-  await expect(editor).toHaveText("Trecho original.");
-});
-
-async function submitRewrite(page: Page) {
-  await page.goto(`/casos/${caseId}`);
-
-  const editor = page.locator(".ProseMirror");
-  await expect(editor).toHaveText("Trecho original.");
-  await editor.click();
-  await page.keyboard.press("Control+A");
-
-  await page.getByRole("button", { name: "Abrir assistente de IA" }).click();
-  await page.getByRole("button", { name: "Reescrever", exact: true }).click();
   await page.getByRole("button", { name: "Enviar para IA" }).click();
-  return editor;
-}
+  await expect(approval(page)).toBeEnabled();
+});
 
-async function configureScenario(request: APIRequestContext, scenario: Record<string, string>) {
-  const response = await request.post(`${fakeApiUrl}/__e2e/scenario`, { data: scenario });
-  expect(response.ok()).toBeTruthy();
-}
+test("conflito de versão bloqueia envio e orienta recarregar", async ({ page, request }) => {
+  const editor = await openChat(page); await configure(request, { autosave: "conflict" });
+  await caretAtEnd(editor); await page.keyboard.type(" Alteração local.");
+  await send(page, "Analise a versão atual.");
+  await expect(page.getByText("Conflito de versão", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Recarregar versão mais recente" })).toBeVisible();
+  await expect(approval(page)).toHaveCount(0); await expect(editor).toContainText("Alteração local.");
+});
 
-function isPiecePatch(response: { request(): { method(): string }; url(): string }) {
-  return response.request().method() === "PATCH"
-    && response.url().endsWith("/api/pecas/22222222-2222-2222-2222-222222222222");
-}
+
+test("salvamento pendente impede aprovação e recuperação exige proposta da versão salva", async ({ page, request }) => {
+  await readyEdit(page, request); await configure(request, { autosave: "error" });
+  await page.getByLabel("Status da peça").selectOption("Finalizada"); await approval(page).click();
+  await expect(page.getByText("Erro ao salvar", { exact: true })).toBeVisible();
+  expect((await (await request.get(`${fakeApiUrl}/__e2e/state`)).json()).applications).toBe(0);
+  await configure(request, { autosave: "success" }); await page.getByRole("button", { name: "Salvar", exact: true }).click();
+  await expect(page.getByText("Salvo", { exact: true })).toBeVisible();
+  await send(page, "Atualize a proposta para a versão salva da peça.");
+  await expect(page.getByRole("heading", { name: "Trecho revisado" })).toHaveCount(2); await expect(approval(page)).toBeEnabled();
+  await approval(page).click(); await expect(page.locator(".ProseMirror")).toHaveText("Trecho jurídico revisado pela IA.");
+  expect((await (await request.get(`${fakeApiUrl}/__e2e/state`)).json()).applications).toBe(1);
+});
+
+test("conflito de salvamento impede aprovação da proposta pendente", async ({ page, request }) => {
+  await readyEdit(page, request); await configure(request, { autosave: "conflict" });
+  await page.getByLabel("Status da peça").selectOption("Finalizada"); await approval(page).click();
+  await expect(page.getByText("Conflito de versão", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Recarregar versão mais recente" })).toBeVisible();
+  expect((await (await request.get(`${fakeApiUrl}/__e2e/state`)).json()).applications).toBe(0);
+});

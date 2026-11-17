@@ -52,10 +52,12 @@ export function LegalDocumentEditor({ peca, onChanged, onReload, focusMode, onTo
     capabilitiesControllerRef.current = controller;
     getAssistantCapabilities(controller.signal)
       .then((result) => {
+        if (controller.signal.aborted || capabilitiesControllerRef.current !== controller) return;
         setAssistantCapabilities(result);
         if (!result.habilitado) setAssistantOpen(false);
       })
       .catch((error) => {
+        if (controller.signal.aborted || capabilitiesControllerRef.current !== controller) return;
         if (error instanceof Error && error.name === "AbortError") return;
         setAssistantCapabilities(null);
         setAssistantOpen(false);

@@ -1,7 +1,7 @@
 import { consumeAssistantEventStream } from "@/features/ai-assistant/sse-parser";
 import type {
   AssistantCapabilities,
-  AssistantRequest,
+  AssistantInteractionRequest,
   AssistantStreamHandlers,
   AssistantTransparency,
 } from "@/features/ai-assistant/types";
@@ -23,25 +23,17 @@ export const confirmAssistantTransparency = (version: string, signal?: AbortSign
 export const rejectAssistantResponse = (conversationId: string, userMessageId: string) =>
   apiRequest<void>(`/assistente/v2/conversas/${conversationId}/mensagens/${userMessageId}/rejeicao`, { method: "POST" });
 
-export async function streamAssistantRequest(
-  pecaId: string,
-  request: AssistantRequest,
+export async function streamAssistantInteraction(
+  conversationId: string,
+  request: AssistantInteractionRequest,
   handlers: AssistantStreamHandlers,
   signal: AbortSignal,
-  conversationId?: string | null,
-  free?: { propostaReferenciadaId?: string | null; anexoIds?: string[] },
 ) {
-  const path = conversationId ? `/assistente/v2/conversas/${conversationId}/${free ? "interacoes" : "mensagens"}` : `/pecas/${pecaId}/assistente/solicitacoes`;
-  const body = free ? {
-    clientRequestId: request.clientRequestId, texto: request.instrucao, versaoPecaEsperada: request.versaoPeca,
-    selecao: request.contexto.documento.selecao, propostaReferenciadaId: free.propostaReferenciadaId ?? null,
-    contextoAdicional: request.contexto.contextoAdicional, incluirDadosCaso: request.contexto.incluirDadosCaso, contextoCasoIds: request.contexto.contextoCasoIds,
-    anexoIds: free.anexoIds,
-  } : request;
-  const response = await apiFetch(path, {
+  if (!conversationId.trim()) throw new ApiError("A conversa precisa estar identificada para enviar o pedido.", 400, "AI_CONVERSATION_REQUIRED");
+  const response = await apiFetch(`/assistente/v2/conversas/${encodeURIComponent(conversationId)}/interacoes`, {
     method: "POST",
     headers: { Accept: "text/event-stream" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(request),
     signal,
   });
   if (!response.body) throw new ApiError("O servidor não iniciou o fluxo da IA.", response.status);

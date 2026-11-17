@@ -9,7 +9,15 @@ const conversationId = "66666666-6666-4666-8666-666666666666";
 // These browser tests exercise the editor/API boundary. Transactional behavior is
 // tested separately against a real PostgreSQL database in the backend suite.
 async function persistentReview(page: Page, request: APIRequestContext, dropReceipt = false) {
-  let proposal: StoredProposal | null = null;
+  const piece = await (await request.get(pieceUrl)).json();
+  let proposal: StoredProposal | null = {
+    id: "77777777-7777-4777-8777-777777777777", conversaId: conversationId,
+    snapshotId: "88888888-8888-4888-8888-888888888888", revisao: 1, versaoDecisoes: 1,
+    versaoPecaAplicavel: piece.versao, estado: "Pendente", documentoBase: piece.conteudoJson,
+    grupos: [{ id: "group-0", estado: "Pendente", explicacao: "Proposta histórica pendente",
+      previewSha256: "opaque-server-hash", operacoes: [{ tipo: "SpliceBlocos", startIndex: 0, deleteCount: 1,
+        novosBlocos: [{ type: "paragraph", content: [{ type: "text", text: "Trecho jurídico revisado pela IA." }] }] }] }],
+  };
   let receipt: ReviewReceipt | null = null;
   let applications = 0;
   let browserPatches = 0;
@@ -70,16 +78,10 @@ async function persistentReview(page: Page, request: APIRequestContext, dropRece
   return { applications: () => applications, browserPatches: () => browserPatches };
 }
 
-async function generateProposal(page: Page) {
+async function openSavedProposal(page: Page) {
   await page.goto(`/casos/${caseId}`);
   const editor = page.locator(".ProseMirror");
   await expect(editor).toContainText("Trecho original.");
-  await editor.click();
-  await page.keyboard.press("Control+A");
-  await page.getByRole("button", { name: "Abrir assistente de IA" }).click();
-  await page.getByRole("button", { name: "Reescrever", exact: true }).click();
-  await page.getByRole("button", { name: "Enviar para IA" }).click();
-  await page.getByRole("button", { name: "Revisar no documento" }).click();
   await expect(page.getByRole("region", { name: "Revisão das alterações" })).toBeVisible();
   await expect(page.getByText("Paginação de revisão", { exact: true })).toBeVisible();
   await expect.poll(async () => {
@@ -100,7 +102,7 @@ test.beforeEach(async ({ page, request }) => {
 
 test("reabre proposta pendente e aprova sem um segundo autosave", async ({ page, request }) => {
   const state = await persistentReview(page, request);
-  await generateProposal(page);
+  await openSavedProposal(page);
   await page.screenshot({ path: "test-results/assistant-persistent-review.png", fullPage: true });
   expect((await (await request.get(pieceUrl)).json()).versao).toBe(1);
   await page.reload();
@@ -117,7 +119,7 @@ test("reabre proposta pendente e aprova sem um segundo autosave", async ({ page,
 
 test("recupera recibo após perda de resposta sem pedir nova aprovação", async ({ page, request }) => {
   const state = await persistentReview(page, request, true);
-  await generateProposal(page);
+  await openSavedProposal(page);
   await page.getByRole("button", { name: "Aprovar todas", exact: true }).click();
   await expect(page.getByRole("button", { name: "Renomear peça", exact: true })).toBeDisabled();
   await expect(page.getByRole("combobox", { name: "Status da peça", exact: true })).toBeDisabled();
@@ -130,7 +132,7 @@ test("recupera recibo após perda de resposta sem pedir nova aprovação", async
 
 test("rejeita sem modificar a peça", async ({ page, request }) => {
   await persistentReview(page, request);
-  await generateProposal(page);
+  await openSavedProposal(page);
   await page.getByRole("button", { name: "Rejeitar todas", exact: true }).click();
   await expect(page.getByText("Revisão concluída.", { exact: true })).toBeVisible();
   await expect(page.locator(".ProseMirror")).toHaveText("Trecho original.");
@@ -139,7 +141,7 @@ test("rejeita sem modificar a peça", async ({ page, request }) => {
 
 test("desfazer após aprovação salva a reversão sobre a versão confirmada", async ({ page, request }) => {
   const state = await persistentReview(page, request);
-  await generateProposal(page);
+  await openSavedProposal(page);
   await page.getByRole("button", { name: "Aprovar todas", exact: true }).click();
   await expect(page.getByText("Revisão concluída.", { exact: true })).toBeVisible();
   await page.locator(".ProseMirror").click();

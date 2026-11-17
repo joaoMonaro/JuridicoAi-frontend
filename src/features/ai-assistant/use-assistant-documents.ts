@@ -24,8 +24,9 @@ export function useAssistantDocuments(enabled: boolean, conversationId: string |
     try {
       const result = await apiRequest<AssistantDocument[]>(`/assistente/v2/conversas/${conversationId}/anexos`, { signal: controller.signal });
       if (controller.signal.aborted || active.current.conversationId !== conversationId) return;
-      setItems(result); setError("");
-      setSelected((previous) => previous.filter(id => result.some(d => d.id === id && !d.vinculado)));
+      const attachments = result.filter(item => item.origem === "AnexoPrivado");
+      setItems(attachments); setError("");
+      setSelected((previous) => previous.filter(id => attachments.some(d => d.id === id && !d.vinculado)));
     } catch (failure) {
       if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Não foi possível consultar os documentos.");
     } finally { if (!controller.signal.aborted) setLoading(false); }
@@ -35,7 +36,7 @@ export function useAssistantDocuments(enabled: boolean, conversationId: string |
     queueMicrotask(() => { if (mounted) void refresh(); });
     return () => { mounted = false; abort.current?.abort(); };
   }, [refresh]);
-  const processing = items.some(d => (d.origem === "DocumentoCaso" || d.vinculado || selected.includes(d.id)) && ["Recebido", "Processando"].includes(d.estado));
+  const processing = items.some(d => (d.vinculado || selected.includes(d.id)) && ["Recebido", "Processando"].includes(d.estado));
   const anyProcessing = items.some(d => ["Recebido", "Processando"].includes(d.estado));
   useEffect(() => {
     if (!enabled || !anyProcessing || error || loading) return;
@@ -50,7 +51,7 @@ export function useAssistantDocuments(enabled: boolean, conversationId: string |
       const body = new FormData(); body.set("arquivo", file); body.set("clientUploadId", crypto.randomUUID());
       const item = await apiRequest<AssistantDocument>(`/assistente/v2/conversas/${conversationId}/anexos`, { method: "POST", body });
       if (active.current.conversationId !== conversationId) return;
-      setSelected(ids => [...new Set([...ids, item.id])]);
+      if (item.origem === "AnexoPrivado") setSelected(ids => [...new Set([...ids, item.id])]);
       await refresh();
     } catch (failure) { setError(failure instanceof Error ? failure.message : "Não foi possível enviar o arquivo."); }
     finally { setUploading(false); }

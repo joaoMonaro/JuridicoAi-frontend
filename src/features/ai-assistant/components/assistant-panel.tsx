@@ -1,19 +1,18 @@
 import type { Editor } from "@tiptap/react";
 import { AlertTriangle, Check, CircleAlert, Copy, LoaderCircle, Maximize2, Minimize2, MoveHorizontal, RotateCcw, Send, ShieldCheck, Sparkles, Square, WandSparkles, X } from "lucide-react";
-import { type FocusEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
   confirmAssistantTransparency,
   getAssistantTransparency,
-  streamAssistantRequest,
+  streamAssistantInteraction,
   rejectAssistantResponse,
 } from "@/features/ai-assistant/api";
 import {
   applySuggestion,
   canApplySuggestion,
-  captureEditorContext,
   isSuggestionAnchorValid,
 } from "@/features/ai-assistant/editor";
 import type {
@@ -21,18 +20,15 @@ import type {
   AssistantCompletedEvent,
   AssistantMode,
   AssistantOperation,
-  AssistantRequest,
+  AssistantInteractionRequest,
   AssistantTransparency,
   DocumentContextScope,
   AssistantSuggestion,
 } from "@/features/ai-assistant/types";
-import { listarContextos } from "@/features/contextos/api";
-import { CONTEXTO_TIPO_LABELS } from "@/features/contextos/contexto-options";
-import type { ContextoCaso } from "@/features/contextos/types";
 import type { Peca, SaveState } from "@/features/pecas/types";
 import { ApiError } from "@/lib/api-client";
 import { mergeHistory } from "../conversation-history";
-import type { ConversationTurn, RequestDraft, SelectionSnapshot } from "../conversation-history";
+import type { ConversationTurn } from "../conversation-history";
 import { useAssistantHistory } from "../use-assistant-history";
 import type { StoredProposal } from "../review/persistent-api";
 import { AutomaticProposalResult } from "./automatic-proposal-result";
@@ -86,52 +82,21 @@ const operationLabels: Record<AssistantOperation, string> = {
   ProporAlteracoes: "Alterações propostas",
 };
 
-function captureSelection(editor: Editor, editorRevision: number): SelectionSnapshot | null {
-  const { from, to, empty } = editor.state.selection;
-  if (empty) return null;
-  const text = editor.state.doc.textBetween(from, to, "\n");
-  if (!text.trim()) return null;
-  return { from, to, text, editorRevision };
-}
-
-function snapshotFromSelection(selection: SelectionSnapshot): ReturnType<typeof captureEditorContext> {
-  return {
-    scope: "Selecao",
-    text: selection.text,
-    sectionTitle: null,
-    selection: {
-      from: selection.from,
-      to: selection.to,
-      originalText: selection.text,
-    },
-    cursorPosition: selection.to,
-    editorRevision: selection.editorRevision,
-  };
-}
-
 export function AssistantPanel({ open, capabilities, editor, peca, editorRevision, saveState, onCapabilitiesInvalidated, onClose, onReviewSuggestion, ensurePersisted,
   blocked = false, proposalReferenceId, currentProposal, onPreparedProposal, onOpenProposal }: Props) {
   const [transparency, setTransparency] = useState<AssistantTransparency | null>(null);
   const [transparencyError, setTransparencyError] = useState("");
   const [confirmingTransparency, setConfirmingTransparency] = useState(false);
-  const [contexts, setContexts] = useState<ContextoCaso[] | null>(null);
-  const [contextsError, setContextsError] = useState("");
-  const [mode, setMode] = useState<AssistantMode>("Perguntar");
-  const [scope, setScope] = useState<DocumentContextScope>("Nenhum");
-  const [selectionSnapshot, setSelectionSnapshot] = useState<SelectionSnapshot | null>(null);
   const [instruction, setInstruction] = useState("");
-  const [additionalContext, setAdditionalContext] = useState("");
-  const [includeCaseData, setIncludeCaseData] = useState(false);
-  const [selectedContextIds, setSelectedContextIds] = useState<string[]>([]);
   const [conversations, setConversations] = useState<Record<string, ConversationTurn[]>>({});
   const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
   const [composerError, setComposerError] = useState("");
   const [wide, setWide] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const instructionRef = useRef<HTMLTextAreaElement>(null);
+  const initiallyFocusedPiece = useRef<string | null>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
   const requestController = useRef<AbortController | null>(null);
-  const editorRevisionRef = useRef(editorRevision);
   const wasOpen = useRef(open);
   const sending = useRef(false);
   const preparationCancelled = useRef(false);
@@ -173,47 +138,19 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
     return () => controller.abort();
   }, [open, capabilities.habilitado, transparency, transparencyError]);
 
-  useEffect(() => {
-    if (!open || !transparency?.confirmado || contexts !== null || contextsError) return;
-    const controller = new AbortController();
-    listarContextos(peca.casoId, controller.signal)
-      .then(setContexts)
-      .catch((requestError) => {
-        if (requestError instanceof Error && requestError.name === "AbortError") return;
-        setContextsError(requestError instanceof Error ? requestError.message : "Não foi possível carregar os contextos do caso.");
-      });
-    return () => controller.abort();
-  }, [open, transparency?.confirmado, contexts, contextsError, peca.casoId]);
-
   useEffect(() => () => { preparationCancelled.current = true; requestController.current?.abort(); }, []);
 
   useEffect(() => {
-    editorRevisionRef.current = editorRevision;
-  }, [editorRevision]);
-
-  useEffect(() => {
-    if (!open || !editor || !transparency?.confirmado) return;
-    const snapshot = captureSelection(editor, editorRevisionRef.current);
-    if (snapshot) {
-      setSelectionSnapshot(snapshot);
-      setScope("Selecao");
-    } else {
-      setSelectionSnapshot(null);
-      setScope((current) => current === "Selecao" ? "Nenhum" : current);
-    }
-  }, [editor, open, peca.id, transparency?.confirmado]);
-
-  useEffect(() => {
-    if (!open || !capabilities.habilitado || !transparency?.confirmado) return;
-    const frame = requestAnimationFrame(() => instructionRef.current?.focus());
+    if (!open) { initiallyFocusedPiece.current = null; return; }
+    if (!free || !capabilities.habilitado || !transparency?.confirmado || historyBlocked || documentsBlocked || blocked || busy || initiallyFocusedPiece.current === peca.id) return;
+    const frame = requestAnimationFrame(() => {
+      const composer = instructionRef.current;
+      if (!composer || composer.disabled) return;
+      composer.focus();
+      initiallyFocusedPiece.current = peca.id;
+    });
     return () => cancelAnimationFrame(frame);
-  }, [capabilities.habilitado, open, transparency?.confirmado]);
-
-  useEffect(() => {
-    if (capabilities.modos.includes(mode)) return;
-    // A capacidade pode ser revogada enquanto o painel está aberto.
-    setMode(capabilities.modos[0] ?? "Perguntar");
-  }, [capabilities.modos, mode]);
+  }, [blocked, busy, capabilities.habilitado, documentsBlocked, free, historyBlocked, open, peca.id, transparency?.confirmado]);
 
   useEffect(() => {
     let frame: number | undefined;
@@ -248,50 +185,6 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
     return () => window.removeEventListener("keydown", handleEscape);
   }, [busy, onClose, open]);
 
-  function changeMode(nextMode: AssistantMode) {
-    setMode(nextMode);
-    if (nextMode === "Redigir" && !editor?.getText().trim()) selectDocumentScope("Nenhum");
-  }
-
-  function quickAction(nextMode: AssistantMode, nextInstruction: string, nextScope?: DocumentContextScope) {
-    changeMode(nextMode);
-    setInstruction(nextInstruction);
-    if (nextScope) selectDocumentScope(nextScope);
-  }
-
-  function selectDocumentScope(nextScope: DocumentContextScope) {
-    setComposerError("");
-    if (nextScope === "Selecao") {
-      if (!editor) return;
-      const snapshot = captureSelection(editor, editorRevision);
-      if (!snapshot) {
-        setSelectionSnapshot(null);
-        setScope("Nenhum");
-        setComposerError("Selecione um trecho antes de usar esse escopo.");
-        return;
-      }
-      setSelectionSnapshot(snapshot);
-    } else {
-      setSelectionSnapshot(null);
-    }
-    setScope(nextScope);
-  }
-
-  function captureSelectionOnAssistantFocus(event: FocusEvent<HTMLElement>) {
-    if (!editor || !(event.relatedTarget instanceof Node) || !editor.view.dom.contains(event.relatedTarget)) return;
-    const snapshot = captureSelection(editor, editorRevisionRef.current);
-    if (!snapshot) return;
-    setSelectionSnapshot(snapshot);
-    setScope("Selecao");
-    setComposerError("");
-  }
-
-  function preferredOperation(requestMode: AssistantMode, snapshot: ReturnType<typeof captureEditorContext>): AssistantOperation {
-    if (requestMode === "Perguntar" || requestMode === "Revisar") return "ResponderNoPainel";
-    if (requestMode === "Reescrever") return "SubstituirSelecao";
-    return snapshot.selection ? "InserirAposSelecao" : "InserirNoCursor";
-  }
-
   function updateTurn(turnId: string, update: (turn: ConversationTurn) => ConversationTurn) {
     setConversations((current) => ({
       ...current,
@@ -299,44 +192,15 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
     }));
   }
 
-  async function submit(draftOverride?: RequestDraft) {
-    let draft: RequestDraft = draftOverride ?? {
-      mode,
-      scope,
-      selectionSnapshot,
-      instruction,
-      additionalContext,
-      includeCaseData,
-      selectedContextIds,
-    };
-    if (free) {
-      const focus = draft.selectionSnapshot?.editorRevision === editorRevision ? draft.selectionSnapshot : null;
-      draft = { ...draft, mode: "Perguntar", scope: focus ? "Selecao" : "Nenhum", selectionSnapshot: focus };
-    }
-    if (!editor || !capabilities.habilitado || !capabilities.modos.includes(draft.mode) || !draft.instruction.trim() || busy || sending.current || historyBlocked || documentsBlocked || blocked) return;
+  async function submit(previousTurn?: Pick<ConversationTurn, "instruction">) {
+    // Historical retries contribute only the message to the new interaction.
+    const text = (previousTurn?.instruction ?? instruction).trim();
+    const conversationId = history.conversationId;
+    if (!free || !editor || !conversationId || !capabilities.habilitado || !capabilities.modos.includes("Perguntar") || !text || busy || sending.current || historyBlocked || documentsBlocked || blocked) return;
     setComposerError("");
-    let snapshot: ReturnType<typeof captureEditorContext>;
-    try {
-      if (draft.mode === "Reescrever" && !draft.selectionSnapshot) {
-        throw new Error("Selecione um trecho antes de usar esse escopo.");
-      }
-      snapshot = draft.scope === "Selecao" && draft.selectionSnapshot
-        ? snapshotFromSelection(draft.selectionSnapshot)
-        : captureEditorContext(editor, draft.scope, editorRevision);
-      if (draft.scope !== "Selecao") {
-        snapshot = {
-          ...snapshot,
-          selection: null,
-          cursorPosition: editor.state.selection.from,
-        };
-      }
-    } catch (snapshotError) {
-      setComposerError(snapshotError instanceof Error ? snapshotError.message : "Não foi possível capturar o contexto do editor.");
-      return;
-    }
 
-    let version = peca.versao;
-    if (capabilities.suportaHistorico) {
+    let version: number;
+    {
       sending.current = true; setPreparing(true);
       preparationCancelled.current = false;
       const source = editor.state.doc;
@@ -352,35 +216,19 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
       setPreparing(false);
     }
     const clientRequestId = crypto.randomUUID();
-    const request: AssistantRequest = {
+    const request: AssistantInteractionRequest = {
       clientRequestId,
-      modo: draft.mode,
-      instrucao: draft.instruction.trim(),
-      versaoPeca: version,
-      operacaoPreferida: preferredOperation(draft.mode, snapshot),
-      contexto: {
-        documento: {
-          escopo: snapshot.scope,
-          texto: snapshot.scope === "Nenhum" ? null : snapshot.text,
-          tituloSecao: snapshot.sectionTitle,
-          selecao: snapshot.selection ? {
-            from: snapshot.selection.from,
-            to: snapshot.selection.to,
-            textoOriginal: snapshot.selection.originalText,
-          } : null,
-          cursor: snapshot.cursorPosition === null ? null : { posicao: snapshot.cursorPosition },
-          revisaoEditor: snapshot.editorRevision,
-        },
-        contextoAdicional: draft.additionalContext.trim() || null,
-        incluirDadosCaso: draft.includeCaseData,
-        contextoCasoIds: draft.selectedContextIds,
-      },
+      texto: text,
+      versaoPecaEsperada: version,
+      propostaReferenciadaId: proposalReferenceId ?? null,
+      anexoIds: capabilities.documentos ? documents.selected : undefined,
     };
 
     const turn: ConversationTurn = {
-      ...draft,
-      instruction: draft.instruction.trim(),
-      selectedContextIds: [...draft.selectedContextIds],
+      instruction: text,
+      // Presentation metadata remains compatible with historical turns.
+      mode: "Perguntar", scope: "Nenhum", selectionSnapshot: null,
+      additionalContext: "", includeCaseData: false, selectedContextIds: [],
       id: clientRequestId,
       automaticContext: capabilities.suportaHistorico,
       automaticIntent: free,
@@ -400,7 +248,7 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
     const controller = new AbortController();
     requestController.current = controller;
     try {
-      await streamAssistantRequest(peca.id, request, {
+      await streamAssistantInteraction(conversationId, request, {
         onStarted: () => updateTurn(clientRequestId, (current) => ({ ...current, status: "streaming" })),
         onDelta: (delta) => updateTurn(clientRequestId, (current) => ({
           ...current,
@@ -409,12 +257,12 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
         onGenerationQueued: generation => {
           pendingAnalyses.current.add(generation.id);
           updateTurn(clientRequestId, current => ({ ...current, status: "analyzing", generationId: generation.id }));
-          if (!draftOverride) { setInstruction(""); setAdditionalContext(""); }
+          if (!previousTurn) { setInstruction(""); }
         },
         onWaiting: analysis => {
           pendingAnalyses.current.add(analysis.id);
           updateTurn(clientRequestId, current => ({ ...current, status: "analyzing", analysisId: analysis.id }));
-          if (!draftOverride) { setInstruction(""); setAdditionalContext(""); }
+          if (!previousTurn) { setInstruction(""); }
         },
         onHistoryContext: historyContext => updateTurn(clientRequestId, current => ({ ...current, historyContext })),
         onDocumentCoverage: coverage => updateTurn(clientRequestId, current => ({ ...current, coverage })),
@@ -427,13 +275,11 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
           }));
           if (event.proposta) onPreparedProposal?.(event.proposta);
           if (capabilities.documentos) void documents.refresh();
-          if (!draftOverride) {
+          if (!previousTurn) {
             setInstruction("");
-            setAdditionalContext("");
           }
         },
-      }, controller.signal, capabilities.suportaHistorico ? history.conversationId : undefined,
-      free ? { propostaReferenciadaId: proposalReferenceId, anexoIds: capabilities.documentos ? documents.selected : undefined } : undefined);
+      }, controller.signal);
     } catch (requestError) {
       if (requestError instanceof Error && requestError.name === "AbortError") {
         updateTurn(clientRequestId, (current) => ({
@@ -532,20 +378,6 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
     }
   }
 
-  function developFinding(title: string, description: string) {
-    changeMode("Redigir");
-    setInstruction(`Desenvolva um trecho jurídico para a seguinte melhoria: ${title}.`);
-    setAdditionalContext(description);
-    if (scope === "Nenhum") selectDocumentScope("SecaoAtual");
-    instructionRef.current?.focus();
-  }
-
-  function toggleContext(id: string) {
-    setSelectedContextIds((current) => current.includes(id)
-      ? current.filter((item) => item !== id)
-      : [...current, id]);
-  }
-
   async function confirmTransparency() {
     if (!transparency || confirmingTransparency) return;
     setConfirmingTransparency(true);
@@ -569,9 +401,6 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
   if (!open) return null;
 
   const transparencyPending = Boolean(capabilities.habilitado && transparency && !transparency.confirmado);
-  const canRewrite = capabilities.modos.includes("Reescrever");
-  const canReview = capabilities.modos.includes("Revisar");
-  const canDraft = capabilities.modos.includes("Redigir");
 
   const panelClassName = expanded
     ? "fixed inset-y-4 right-4 z-40 flex w-[min(720px,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border bg-card shadow-2xl"
@@ -583,7 +412,6 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
     aria-label="Assistente de IA"
     aria-hidden={transparencyPending || undefined}
     inert={transparencyPending || undefined}
-    onFocusCapture={captureSelectionOnAssistantFocus}
   >
     <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
       <span className="grid size-7 place-items-center rounded-md bg-primary/15 text-primary"><Sparkles className="size-4" aria-hidden="true" /></span>
@@ -614,42 +442,25 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
           turn={turn}
           conversationId={history.conversationId}
           onRefreshHistory={history.refresh}
-          contexts={contexts ?? []}
           editor={editor}
           editorRevision={editorRevision}
           saveState={saveState}
-          canDevelop={canDraft}
           onTextChange={(value) => updateTurn(turn.id, (current) => ({ ...current, editableText: value }))}
           onApply={() => { void apply(turn.id); }}
           reviewInDocument={Boolean(onReviewSuggestion)}
           onReject={() => { void reject(turn.id); }}
           onRetry={() => void submit(turn)}
           onCopy={() => void copySuggestion(turn.id)}
-          onDevelop={developFinding}
           currentProposal={currentProposal}
           onOpenProposal={() => { void openProposal(turn.id); }}
         />)}
       </div> : null}
     </div>
 
-    {capabilities.habilitado && transparency?.confirmado ? <footer className="shrink-0 border-t bg-card p-3">
+    {capabilities.habilitado && transparency?.confirmado && !free ? <p role="status" className="border-t p-3 text-xs text-muted-foreground">O assistente está indisponível neste ambiente. O histórico permanece disponível para consulta.</p> : null}
+    {capabilities.habilitado && transparency?.confirmado && free ? <footer className="shrink-0 border-t bg-card p-3">
       {capabilities.documentos && free ? <AssistantDocuments documents={documents} limits={capabilities.documentos} disabled={busy || blocked || historyBlocked} /> : null}
       {composerError ? <div className="mb-2"><ErrorBox message={composerError} /></div> : null}
-      {!free && mode !== "Perguntar" ? <div className="mb-2 flex items-center gap-1.5">
-        <span className="inline-flex items-center gap-1 rounded-full border border-primary/25 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary">{modeLabels[mode]}<button type="button" className="rounded-full p-0.5 hover:bg-primary/10" onClick={() => changeMode("Perguntar")} aria-label={`Remover ação ${modeLabels[mode]}`}><X className="size-3" /></button></span>
-      </div> : null}
-      {scope !== "Nenhum" || includeCaseData || selectedContextIds.length > 0 || additionalContext ? <div className="mb-2 flex flex-wrap gap-1.5" aria-label="Contextos do próximo pedido">
-        {scope !== "Nenhum" ? <ContextChip
-          label={scope === "Selecao" && selectionSnapshot ? `Seleção · ${selectionSnapshot.text.length} caracteres` : scopeLabels[scope]}
-          onRemove={() => selectDocumentScope("Nenhum")}
-        /> : null}
-        {includeCaseData ? <ContextChip label="Dados essenciais do Caso" onRemove={() => setIncludeCaseData(false)} /> : null}
-        {selectedContextIds.map((id) => {
-          const context = contexts?.find((item) => item.id === id);
-          return <ContextChip key={id} label={context?.titulo || (context ? CONTEXTO_TIPO_LABELS[context.tipo] : "Contexto do Caso")} onRemove={() => toggleContext(id)} />;
-        })}
-        {additionalContext ? <ContextChip label={`Informação adicional · ${additionalContext.length} caracteres`} onRemove={() => setAdditionalContext("")} /> : null}
-      </div> : null}
       <label className="sr-only" htmlFor="assistant-composer">O que você quer que a IA faça?</label>
       <div className="rounded-lg border bg-background shadow-sm focus-within:ring-2 focus-within:ring-ring/40">
         <Textarea
@@ -669,30 +480,10 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
           placeholder="Pergunte ou peça uma alteração..."
         />
         <div className="flex items-center justify-between gap-2 px-2 pb-2">
-          <details className="relative">
-            <summary className="cursor-pointer list-none rounded-md px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground">+ Adicionar contexto</summary>
-            <div className="absolute bottom-8 left-0 z-20 w-80 max-w-[calc(100vw-2rem)] rounded-lg border bg-popover p-3 shadow-xl">
-              {free ? <p className="text-xs text-muted-foreground">A Peça atual e a conversa já estão no contexto. Selecione um trecho no editor se quiser dar foco ao pedido.</p> : <label className="text-xs font-medium">{capabilities.suportaHistorico ? "Foco do pedido" : "Trecho da Peça"}<select className="mt-1 h-8 w-full rounded-md border bg-background px-2 text-xs" value={scope} disabled={busy} onChange={(event) => selectDocumentScope(event.target.value as DocumentContextScope)}>{Object.entries(scopeLabels).map(([value, label]) => <option key={value} value={value}>{value === "Nenhum" && capabilities.suportaHistorico ? "Peça atual e conversa" : label}</option>)}</select></label>}
-              <label className="mt-3 flex items-start gap-2 text-xs"><input type="checkbox" className="mt-0.5 accent-primary" checked={includeCaseData} disabled={busy} onChange={(event) => setIncludeCaseData(event.target.checked)} /><span><span className="font-medium">Incluir dados do caso</span><span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">Envia somente os dados essenciais. Documentos pessoais não são incluídos.</span></span></label>
-              {contexts?.length ? <fieldset className="mt-3"><legend className="text-[11px] font-medium">Contextos cadastrados</legend><div className="mt-1.5 max-h-32 space-y-1 overflow-y-auto">{contexts.map((item) => <label key={item.id} className="flex items-start gap-2 rounded px-1 py-1 text-xs hover:bg-muted"><input type="checkbox" className="mt-0.5 accent-primary" checked={selectedContextIds.includes(item.id)} disabled={busy} onChange={() => toggleContext(item.id)} /><span className="min-w-0"><span className="block truncate">{item.titulo || CONTEXTO_TIPO_LABELS[item.tipo]}</span><span className="text-[10px] text-muted-foreground">{CONTEXTO_TIPO_LABELS[item.tipo]}</span></span></label>)}</div></fieldset> : null}
-              {contextsError ? <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-destructive"><span>{contextsError}</span><Button type="button" size="xs" variant="outline" onClick={() => setContextsError("")}><RotateCcw />Tentar novamente</Button></div> : null}
-              <label className="mt-3 block text-[11px] font-medium">Informação apenas para este pedido<Textarea className="mt-1 min-h-20 text-xs" value={additionalContext} disabled={busy} maxLength={capabilities.limites.contextoAdicionalCaracteres} onChange={(event) => setAdditionalContext(event.target.value)} placeholder="Fatos ou instruções que não devem entrar automaticamente na Peça." /></label>
-            </div>
-          </details>
-          <span className="text-[10px] text-muted-foreground">{scope === "Nenhum" && capabilities.suportaHistorico ? "Peça atual e conversa" : scopeLabels[scope]}</span>
+          <span className="text-[10px] text-muted-foreground">Peça salva e conversa</span>
           {busy ? <Button type="button" size="icon-sm" variant="outline" onClick={cancel} aria-label="Cancelar"><Square className="size-3 fill-current" /></Button> : <Button type="button" size="icon-sm" disabled={!editor || !instruction.trim() || historyBlocked || documentsBlocked || blocked} onClick={() => void submit()} aria-label="Enviar para IA"><Send /></Button>}
         </div>
       </div>
-      {free ? <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Sugestões de pedidos">
-        {capabilities.features?.includes("AI_DOCUMENT_GENERATION") ? <Button type="button" size="xs" variant="ghost" disabled={busy || blocked} onClick={() => setInstruction("Gere uma minuta inicial com os fatos disponíveis nesta conversa.")}>Criar minuta</Button> : null}
-        {canDraft ? <Button type="button" size="xs" variant="ghost" disabled={busy || blocked} onClick={() => setInstruction(selectionSnapshot ? "Melhore o trecho selecionado, preservando os fatos e o sentido jurídico." : "Melhore a redação da Peça, preservando os fatos e o sentido jurídico.")}>Melhorar redação</Button> : null}
-        <Button type="button" size="xs" variant="ghost" disabled={busy || blocked} onClick={() => setInstruction(selectionSnapshot ? "Explique o trecho selecionado de forma clara." : "Explique os principais pontos da Peça de forma clara.")}>Explicar trecho</Button>
-      </div> : canRewrite || canReview || canDraft ? <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Ações rápidas">
-        {canRewrite ? <><Button type="button" size="xs" variant="ghost" onClick={() => quickAction("Reescrever", "Reescreva o trecho preservando o sentido jurídico e os fatos.", "Selecao")}>Reescrever</Button><Button type="button" size="xs" variant="ghost" onClick={() => quickAction("Reescrever", "Expanda o trecho com maior clareza e fundamentação, sem inventar fatos.", "Selecao")}>Expandir</Button></> : null}
-        {canReview ? <Button type="button" size="xs" variant="ghost" onClick={() => quickAction("Revisar", "Identifique lacunas, contradições e melhorias possíveis nesta parte da Peça.")}>Revisar</Button> : null}
-        {canDraft ? <Button type="button" size="xs" variant="ghost" onClick={() => quickAction("Redigir", "Redija um novo trecho jurídico conforme o contexto informado.")}>Novo trecho</Button> : null}
-        <span className="ml-auto self-center text-[10px] text-muted-foreground">Ctrl/Cmd + Enter</span>
-      </div> : null}
     </footer> : null}
   </aside>
   {transparencyPending && transparency ? <AssistantTransparencyDialog
@@ -703,13 +494,6 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
     onClose={close}
   /> : null}
   </>;
-}
-
-function ContextChip({ label, onRemove }: { label: string; onRemove: () => void }) {
-  return <span className="inline-flex max-w-full items-center gap-1 rounded-full border bg-muted/60 py-1 pl-2 pr-1 text-[11px] text-foreground">
-    <span className="truncate">{label}</span>
-    <button type="button" className="grid size-5 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground" onClick={onRemove} aria-label={`Remover contexto: ${label}`}><X className="size-3" /></button>
-  </span>;
 }
 
 function ConversationEmptyState() {
@@ -724,23 +508,20 @@ interface ConversationTurnProps {
   conversationId: string | null;
   onRefreshHistory: () => Promise<void>;
   turn: ConversationTurn;
-  contexts: ContextoCaso[];
   editor: Editor | null;
   editorRevision: number;
   saveState: SaveState;
-  canDevelop: boolean;
   reviewInDocument: boolean;
   onTextChange: (value: string) => void;
   onApply: () => void;
   onReject: () => void;
   onRetry: () => void;
   onCopy: () => void;
-  onDevelop: (title: string, description: string) => void;
   currentProposal?: StoredProposal | null;
   onOpenProposal: () => void;
 }
 
-function ConversationTurnView({ turn, conversationId, onRefreshHistory, contexts, editor, editorRevision, saveState, canDevelop, reviewInDocument, onTextChange, onApply, onReject, onRetry, onCopy, onDevelop, currentProposal, onOpenProposal }: ConversationTurnProps) {
+function ConversationTurnView({ turn, conversationId, onRefreshHistory, editor, editorRevision, saveState, reviewInDocument, onTextChange, onApply, onReject, onRetry, onCopy, currentProposal, onOpenProposal }: ConversationTurnProps) {
   const suggestion = turn.completed?.sugestao ?? null;
   const anchorValid = useMemo(
     () => Boolean(editor && suggestion && isSuggestionAnchorValid(editor, suggestion, editorRevision)),
@@ -748,10 +529,6 @@ function ConversationTurnView({ turn, conversationId, onRefreshHistory, contexts
   );
   const canApply = Boolean(!turn.historical && editor && suggestion && turn.status === "completed" &&
     canApplySuggestion(editor, suggestion, turn.editableText, editorRevision, saveState));
-  const selectedContexts = turn.selectedContextIds
-    .map((id) => contexts.find((context) => context.id === id))
-    .filter((context): context is ContextoCaso => Boolean(context));
-
   return <article className="space-y-3" aria-label="Troca com o assistente">
     <div className="ml-auto max-w-[88%] rounded-2xl rounded-br-sm bg-primary px-3 py-2.5 text-primary-foreground">
       <p className="whitespace-pre-wrap text-sm leading-5">{turn.instruction}</p>
@@ -759,7 +536,7 @@ function ConversationTurnView({ turn, conversationId, onRefreshHistory, contexts
         <summary className="cursor-pointer">{turn.automaticIntent ? "Conversa" : modeLabels[turn.mode]} · {turn.scope === "Selecao" && turn.selectionSnapshot ? `Seleção · ${turn.selectionSnapshot.text.length} caracteres` : turn.scope === "Nenhum" && turn.automaticContext ? "Peça atual e conversa" : scopeLabels[turn.scope]}</summary>
         <ul className="mt-1 space-y-0.5">
           {turn.includeCaseData ? <li>Dados essenciais do Caso</li> : null}
-          {selectedContexts.map((context) => <li key={context.id}>{context.titulo || CONTEXTO_TIPO_LABELS[context.tipo]}</li>)}
+          {turn.selectedContextIds.length ? <li>{turn.selectedContextIds.length} contextos do Caso informados neste pedido</li> : null}
           {turn.additionalContext ? <li>Informação adicional para este pedido</li> : null}
         </ul>
       </details>
@@ -791,8 +568,6 @@ function ConversationTurnView({ turn, conversationId, onRefreshHistory, contexts
           onReject={onReject}
           onRetry={onRetry}
           onCopy={onCopy}
-          onDevelop={onDevelop}
-          canDevelop={canDevelop}
         />}
       </> : null}
       {turn.generationId && conversationId ? <GenerationProgress conversationId={conversationId} generationId={turn.generationId} onTerminal={onRefreshHistory} /> : null}
@@ -908,12 +683,10 @@ interface ResultProps {
   onReject: () => void;
   onRetry: () => void;
   onCopy: () => void;
-  onDevelop: (title: string, description: string) => void;
-  canDevelop: boolean;
   reviewInDocument: boolean;
 }
 
-function SuggestionResult({ completed, editableText, phase, anchorValid, canApply, saveState, onTextChange, onApply, onReject, onRetry, onCopy, onDevelop, canDevelop, reviewInDocument }: ResultProps) {
+function SuggestionResult({ completed, editableText, phase, anchorValid, canApply, saveState, onTextChange, onApply, onReject, onRetry, onCopy, reviewInDocument }: ResultProps) {
   const { sugestao } = completed;
   const canWrite = sugestao.operacaoSugerida !== "ResponderNoPainel";
   const saveBlockingMessage = saveState === "SALVO" ? null
@@ -926,7 +699,7 @@ function SuggestionResult({ completed, editableText, phase, anchorValid, canAppl
 
     {sugestao.operacaoSugerida === "SubstituirSelecao" && sugestao.ancora.textoOriginal ? <div className="mt-3 grid gap-2"><details className="rounded-md border bg-muted/30 p-2.5"><summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Ver texto original</summary><p className="mt-2 whitespace-pre-wrap text-xs leading-5">{sugestao.ancora.textoOriginal}</p></details><div className="rounded-md border border-success/25 bg-success/5 p-2.5"><p className="text-[10px] font-semibold uppercase tracking-wide text-success">Alteração sugerida</p><Textarea aria-label="Texto proposto pela IA" className="mt-1 min-h-32 bg-transparent text-xs leading-5" value={editableText} disabled={phase !== "completed"} onChange={(event) => onTextChange(event.target.value)} /></div></div> : canWrite ? <Textarea aria-label="Texto sugerido" className="mt-3 min-h-40 text-xs leading-5" value={editableText} disabled={phase !== "completed"} onChange={(event) => onTextChange(event.target.value)} /> : <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{editableText}</p>}
 
-    {sugestao.achados.length ? <div className="mt-3 space-y-2"><h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Pontos encontrados</h4>{sugestao.achados.map((finding) => <article key={finding.id} className="rounded-md border bg-background/50 p-2.5"><div className="flex items-start justify-between gap-2"><div><span className="text-[10px] font-medium text-primary">{finding.categoria}</span><h5 className="mt-0.5 text-xs font-semibold">{finding.titulo}</h5></div>{canDevelop ? <Button type="button" size="xs" variant="outline" onClick={() => onDevelop(finding.titulo, finding.descricao)}>Desenvolver</Button> : null}</div><p className="mt-1 text-xs leading-5 text-muted-foreground">{finding.descricao}</p></article>)}</div> : null}
+    {sugestao.achados.length ? <div className="mt-3 space-y-2"><h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Pontos encontrados</h4>{sugestao.achados.map((finding) => <article key={finding.id} className="rounded-md border bg-background/50 p-2.5"><div className="flex items-start justify-between gap-2"><div><span className="text-[10px] font-medium text-primary">{finding.categoria}</span><h5 className="mt-0.5 text-xs font-semibold">{finding.titulo}</h5></div></div><p className="mt-1 text-xs leading-5 text-muted-foreground">{finding.descricao}</p></article>)}</div> : null}
 
     {sugestao.alertas.length ? <div className="mt-3 rounded-md border border-warning/30 bg-warning/10 p-2.5"><h4 className="flex items-center gap-1.5 text-xs font-medium text-warning"><AlertTriangle className="size-3.5" />Verifique antes de usar</h4><ul className="mt-1.5 space-y-1 text-[11px] leading-4 text-muted-foreground">{sugestao.alertas.map((alert, index) => <li key={`${alert.codigo}-${index}`}>• {alert.mensagem}</li>)}</ul></div> : null}
 

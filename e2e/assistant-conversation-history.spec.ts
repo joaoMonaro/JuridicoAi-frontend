@@ -8,7 +8,7 @@ const pieceId = "22222222-2222-2222-2222-222222222222";
 const conversationId = "66666666-6666-4666-8666-666666666666";
 const base = fakeApiUrl;
 
-async function historyApi(page: Page, request: APIRequestContext, seed: StoredMessage[] = []) {
+async function historyApi(page: Page, _request: APIRequestContext, seed: StoredMessage[] = []) {
   const messages = [...seed];
   const sent: AssistantRequest[] = [];
   let historyError = false;
@@ -16,7 +16,7 @@ async function historyApi(page: Page, request: APIRequestContext, seed: StoredMe
   await page.route("**/api/templates-peca", (route) => route.fulfill({ json: [] }));
   await page.route("**/api/assistente/capacidades", async (route) => {
     const response = await route.fetch();
-    await route.fulfill({ json: { ...await response.json(), suportaHistorico: true, suportaRevisaoPersistida: true } });
+    await route.fulfill({ json: { ...await response.json(), suportaHistorico: true, suportaRevisaoPersistida: true, suportaConversaLivre: true } });
   });
   await page.route("**/api/assistente/v2/**", async (route) => {
     const req = route.request(); const url = new URL(req.url());
@@ -34,8 +34,13 @@ async function historyApi(page: Page, request: APIRequestContext, seed: StoredMe
       const limit = Number(url.searchParams.get("limite"));
       return route.fulfill({ json: messages.filter((m) => m.sequencia < before).slice(-limit) });
     }
-    if (url.pathname.endsWith("/mensagens") && req.method() === "POST") {
-      const input = req.postDataJSON() as AssistantRequest; sent.push(input);
+    if (url.pathname.endsWith("/interacoes") && req.method() === "POST") {
+      const natural = req.postDataJSON();
+      for (const field of ["modo", "operacaoPreferida", "contexto", "selecao", "cursor", "contextoAdicional", "incluirDadosCaso", "contextoCasoIds"]) expect(natural).not.toHaveProperty(field);
+      const input: AssistantRequest = { clientRequestId: natural.clientRequestId, modo: "Perguntar", instrucao: natural.texto,
+        versaoPeca: natural.versaoPecaEsperada, operacaoPreferida: "ResponderNoPainel", interacaoAutomatica: true,
+        contexto: { documento: { escopo: "Nenhum", texto: null, tituloSecao: null, selecao: null, cursor: null, revisaoEditor: 0 }, contextoAdicional: null, incluirDadosCaso: false, contextoCasoIds: [] } };
+      sent.push(input);
       const userId = `user-${messages.length}`;
       if (failNextMessage) {
         failNextMessage = false;
@@ -46,12 +51,11 @@ async function historyApi(page: Page, request: APIRequestContext, seed: StoredMe
           criadaEm: "2026-11-11T14:00:00Z", respostaAId: userId, estado: "Falhou", codigoErro: "AI_UNAVAILABLE" });
         return route.fulfill({ status: 503, json: { detail: "Falha sintética do provedor." } });
       }
-      const response = await request.post(`${base}/api/pecas/${pieceId}/assistente/solicitacoes`, { data: input });
-      const events = await response.text();
-      const match = /event: solicitacao.concluida\r?\ndata: ([^\r\n]+)/u.exec(events);
-      expect(match).not.toBeNull();
-      const result = JSON.parse(match![1]) as AssistantCompletedEvent;
-      result.sugestao.mensagemUsuarioId = userId;
+      const result: AssistantCompletedEvent = {
+        sugestao: { id: `suggestion-${messages.length}`, mensagemUsuarioId: userId, modo: "Perguntar", operacaoSugerida: "ResponderNoPainel", titulo: "Resposta da IA",
+          texto: "Resposta informativa ao pedido.", resumo: "", alertas: [], achados: [], ancora: { from: null, to: null, posicao: null, revisaoEditor: 0, textoOriginal: null } },
+        uso: { entradaTokens: 1, saidaTokens: 1 }, modelo: "fixture-history",
+      };
       const sequence = messages.length + 1;
       messages.push({ id: userId, sequencia: sequence, autor: "Usuario", texto: input.instrucao, propostaId: null,
         criadaEm: "2026-11-11T14:00:00Z", clientRequestId: input.clientRequestId, solicitacao: input, estado: "Concluida" },

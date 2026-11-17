@@ -38,7 +38,7 @@ export function AssistantDocuments({ documents, limits, disabled }: { documents:
     </div>
     <input ref={input} type="file" className="sr-only" aria-label="Arquivo para o chat" accept=".pdf,.docx,.txt,.png,.jpg,.jpeg"
       disabled={disabled || documents.uploading} onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void documents.upload(file, limits.arquivoBytes); }} />
-    <p className="text-[10px] text-muted-foreground">Anexos são privados deste chat. Documentos do Caso são consultados conforme suas permissões.</p>
+    <p className="text-[10px] text-muted-foreground">Anexos são privados deste chat. Para consultar materiais antigos do Caso, peça na conversa.</p>
     {!limits.ocrHabilitado ? <p className="text-[10px] text-muted-foreground">Imagens e regiões digitalizadas serão sinalizadas como não lidas; OCR ainda não habilitado.</p> : null}
     {documents.error ? <div role="alert" className="flex items-center gap-2 text-destructive"><span>{documents.error}</span><Button type="button" size="xs" variant="ghost" onClick={() => void documents.refresh()}>Atualizar</Button></div> : null}
     {documents.items.length ? <details open className="rounded-md border p-2">

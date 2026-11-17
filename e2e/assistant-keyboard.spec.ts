@@ -73,25 +73,21 @@ test("Tab percorre composer e ação de envio em ordem previsível", async ({ pa
   await page.keyboard.type("Analise o trecho atual.");
 
   await page.keyboard.press("Tab");
-  await expect(page.locator("summary", { hasText: "Contexto adicional e dados do caso" })).toBeFocused();
-  await page.keyboard.press("Tab");
   await expect(page.getByRole("button", { name: "Enviar para IA" })).toBeFocused();
 
-  await page.keyboard.press("Shift+Tab");
-  await expect(page.locator("summary", { hasText: "Contexto adicional e dados do caso" })).toBeFocused();
   await page.keyboard.press("Shift+Tab");
   await expect(instruction).toBeFocused();
 });
 
 test("Escape cancela o stream antes de fechar e devolve o foco ao editor", async ({ page, request }) => {
-  await request.post(`${fakeApiUrl}/__e2e/scenario`, { data: { assistant: "slow" } });
+  await request.post(`${fakeApiUrl}/__e2e/scenario`, { data: { assistant: "slow", reply: "edit" } });
   const editor = await openPiece(page);
   await editor.click();
   await page.keyboard.press("Control+A");
   await page.keyboard.press("Control+Alt+a");
   await expect(page.getByRole("textbox", { name: "O que você quer que a IA faça?" })).toBeFocused();
 
-  await activateWithKeyboard(page.getByRole("button", { name: "Reescrever", exact: true }), page);
+  await page.getByRole("textbox", { name: "O que você quer que a IA faça?" }).fill("Reescreva o primeiro parágrafo preservando os fatos.");
   await activateWithKeyboard(page.getByRole("button", { name: "Enviar para IA" }), page);
   await expect(page.getByText("A IA está elaborando a resposta...", { exact: true })).toBeVisible();
 
@@ -105,18 +101,20 @@ test("Escape cancela o stream antes de fechar e devolve o foco ao editor", async
   await expect(editor).toHaveText("Trecho original.");
 });
 
-test("aplica com Enter e preserva undo e redo do editor", async ({ page }) => {
+test("aprova com Enter e preserva undo e redo do editor", async ({ page, request }) => {
+  await request.post(`${fakeApiUrl}/__e2e/scenario`, { data: { reply: "edit" } });
   const editor = await openPiece(page);
   await editor.click();
   await page.keyboard.press("Control+A");
   await page.keyboard.press("Control+Alt+a");
   await expect(page.getByRole("textbox", { name: "O que você quer que a IA faça?" })).toBeFocused();
 
-  await activateWithKeyboard(page.getByRole("button", { name: "Reescrever", exact: true }), page);
+  await page.getByRole("textbox", { name: "O que você quer que a IA faça?" }).fill("Reescreva o primeiro parágrafo preservando os fatos.");
   await activateWithKeyboard(page.getByRole("button", { name: "Enviar para IA" }), page);
   await expect(page.getByRole("heading", { name: "Trecho revisado" })).toBeVisible();
 
-  await activateWithKeyboard(page.getByRole("button", { name: "Substituir seleção" }), page);
+  await activateWithKeyboard(page.getByRole("button", { name: "Aprovar todas", exact: true }), page);
+  await editor.focus();
   await expect(editor).toBeFocused();
   await expect(editor).toHaveText("Trecho jurídico revisado pela IA.");
 

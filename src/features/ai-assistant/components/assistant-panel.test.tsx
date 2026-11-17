@@ -8,8 +8,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   confirmAssistantTransparency,
   getAssistantTransparency,
-  streamAssistantRequest,
+  streamAssistantInteraction,
 } from "@/features/ai-assistant/api";
+import { useAssistantHistory } from "@/features/ai-assistant/use-assistant-history";
 import { AssistantPanel } from "@/features/ai-assistant/components/assistant-panel";
 import type {
   AssistantCapabilities,
@@ -24,9 +25,11 @@ import { ApiError } from "@/lib/api-client";
 vi.mock("@/features/ai-assistant/api", () => ({
   confirmAssistantTransparency: vi.fn(),
   getAssistantTransparency: vi.fn(),
-  streamAssistantRequest: vi.fn(),
+  streamAssistantInteraction: vi.fn(),
   rejectAssistantResponse: vi.fn(),
 }));
+
+vi.mock("@/features/ai-assistant/use-assistant-history", () => ({ useAssistantHistory: vi.fn() }));
 
 vi.mock("@/features/contextos/api", () => ({
   listarContextos: vi.fn(),
@@ -35,7 +38,7 @@ vi.mock("@/features/contextos/api", () => ({
 const editors: Editor[] = [];
 const mockedTransparency = vi.mocked(getAssistantTransparency);
 const mockedConfirmTransparency = vi.mocked(confirmAssistantTransparency);
-const mockedStream = vi.mocked(streamAssistantRequest);
+const mockedStream = vi.mocked(streamAssistantInteraction);
 const mockedContexts = vi.mocked(listarContextos);
 
 beforeEach(() => {
@@ -46,6 +49,7 @@ beforeEach(() => {
   mockedTransparency.mockResolvedValue(confirmedTransparency);
   mockedConfirmTransparency.mockResolvedValue(confirmedTransparency);
   mockedContexts.mockResolvedValue([]);
+  vi.mocked(useAssistantHistory).mockReturnValue({ conversationId: "conversa-1", messages: [], loading: false, error: "", hasOlder: false, generating: false, refresh: vi.fn().mockResolvedValue(undefined), loadOlder: vi.fn().mockResolvedValue(undefined) });
 });
 
 afterEach(() => {
@@ -53,6 +57,43 @@ afterEach(() => {
 });
 
 describe("AssistantPanel", () => {
+  it("aguarda o histórico para focar o composer uma vez sem roubar foco nos refreshes", async () => {
+    const user = userEvent.setup();
+    const editor = createEditor();
+    const history = vi.mocked(useAssistantHistory).getMockImplementation()!(true, peca.id);
+    vi.mocked(useAssistantHistory).mockReturnValue({ ...history, conversationId: null, loading: true });
+    const view = renderPanel({ editor });
+    const composer = await screen.findByRole("textbox", { name: "O que você quer que a IA faça?" });
+    expect(composer).toBeDisabled();
+    expect(composer).not.toHaveFocus();
+
+    vi.mocked(useAssistantHistory).mockReturnValue(history);
+    view.rerender(panel({ editor }));
+    await waitFor(() => expect(composer).toHaveFocus());
+
+    const resize = screen.getByRole("button", { name: "Aumentar largura do assistente" });
+    await user.click(resize);
+    expect(resize).toHaveFocus();
+    vi.mocked(useAssistantHistory).mockReturnValue({ ...history, loading: true });
+    view.rerender(panel({ editor }));
+    vi.mocked(useAssistantHistory).mockReturnValue(history);
+    view.rerender(panel({ editor }));
+    await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });
+    expect(resize).toHaveFocus();
+
+    view.rerender(panel({ editor, open: false }));
+    view.rerender(panel({ editor }));
+    const reopenedComposer = await screen.findByRole("textbox", { name: "O que você quer que a IA faça?" });
+    await waitFor(() => expect(reopenedComposer).toHaveFocus());
+  });
+
+  it("mantém o histórico consultável e explica a ausência de conversa livre sem expor o fluxo antigo", async () => {
+    renderPanel({ capabilities: { ...capabilities, suportaConversaLivre: false } });
+    expect(await screen.findByText(/O assistente está indisponível/)).toBeVisible();
+    expect(screen.queryByRole("textbox", { name: "O que você quer que a IA faça?" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reescrever" })).not.toBeInTheDocument();
+  });
+
   it("exibe o aviso no primeiro uso e só libera o assistente após a confirmação", async () => {
     const user = userEvent.setup();
     mockedTransparency.mockResolvedValue(pendingTransparency);
@@ -91,198 +132,89 @@ describe("AssistantPanel", () => {
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 
-  it("impede envio vazio e explica quando Reescrever não possui seleção", async () => {
-    const user = userEvent.setup();
+  it("impede envio vazio e não expõe atalhos ou campos paralelos", async () => {
     renderPanel();
+    expect(await screen.findByRole("button", { name: "Enviar para IA" })).toBeDisabled();
+    for (const name of ["Criar minuta", "Melhorar redação", "Explicar trecho", "Reescrever", "Expandir", "Revisar", "Novo trecho", "Desenvolver"]) {
+      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+    }
+    expect(screen.queryByText("+ Adicionar contexto")).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Informação apenas para este pedido" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(mockedContexts).not.toHaveBeenCalled();
+  });
 
-    const send = await screen.findByRole("button", { name: "Enviar para IA" });
-    expect(send).toBeDisabled();
+  it("sincroniza a peça e ignora a seleção e o cursor no envio", async () => {
+    const user = userEvent.setup();
+    const editor = createEditor();
+    editor.commands.setTextSelection(findText(editor, "Trecho original."));
+    const ensurePersisted = vi.fn().mockResolvedValue(7);
+    completeImmediately(completedEvent("ResponderNoPainel"));
+    renderPanel({ editor, editorRevision: 3, ensurePersisted });
+    const composer = await screen.findByRole("textbox", { name: "O que você quer que a IA faça?" });
+    fireEvent.focus(composer, { relatedTarget: editor.view.dom });
+    expect(screen.queryByText(/Seleção ·/)).not.toBeInTheDocument();
+    await user.type(composer, "Analise a peça.");
+    await user.click(screen.getByRole("button", { name: "Enviar para IA" }));
+    await screen.findByRole("heading", { name: "Resposta da IA" });
+    expect(ensurePersisted).toHaveBeenCalledOnce();
+    expect(mockedStream.mock.calls[0][0]).toBe("conversa-1");
+    expect(mockedStream.mock.calls[0][1]).toEqual({
+      clientRequestId: expect.any(String), texto: "Analise a peça.", versaoPecaEsperada: 7,
+      propostaReferenciadaId: null, anexoIds: undefined,
+    });
+  });
 
-    await user.click(screen.getByRole("button", { name: "Reescrever" }));
-    expect(send).toBeEnabled();
-    await user.click(send);
+  it("reenvia mensagem histórica sem reutilizar seleção nem configurações antigas", async () => {
+    const user = userEvent.setup();
+    const saved = vi.mocked(useAssistantHistory).getMockImplementation()!;
+    const current = saved(true, peca.id);
+    vi.mocked(useAssistantHistory).mockReturnValue({ ...current, messages: [
+      { id: "antiga", sequencia: 1, autor: "Usuario", texto: "Reescreva o parágrafo inicial.", propostaId: null, criadaEm: "2026-11-01T00:00:00Z",
+        solicitacao: { clientRequestId: "old", modo: "Reescrever", instrucao: "Reescreva o parágrafo inicial.", versaoPeca: 1, operacaoPreferida: "SubstituirSelecao",
+          contexto: { documento: { escopo: "Selecao", texto: "Trecho original.", tituloSecao: null,
+            selecao: { from: 1, to: 17, textoOriginal: "Trecho original." }, cursor: { posicao: 17 }, revisaoEditor: 1 },
+            contextoAdicional: "Informação antiga", incluirDadosCaso: true, contextoCasoIds: ["contexto-antigo"] } } },
+      { id: "resposta-antiga", respostaAId: "antiga", sequencia: 2, autor: "Assistente", texto: "", propostaId: null,
+        criadaEm: "2026-11-01T00:00:01Z", estado: "Cancelada" },
+    ] });
+    completeImmediately(completedEvent("ResponderNoPainel"));
+    renderPanel();
+    await user.click(await screen.findByRole("button", { name: "Reenviar pedido" }));
+    await waitFor(() => expect(mockedStream).toHaveBeenCalledOnce());
+    expect(mockedStream.mock.calls[0][1]).toEqual({ clientRequestId: expect.any(String),
+      texto: "Reescreva o parágrafo inicial.", versaoPecaEsperada: 1,
+      propostaReferenciadaId: null, anexoIds: undefined });
+    expect(mockedContexts).not.toHaveBeenCalled();
+  });
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Selecione um trecho antes de usar esse escopo.");
+  it("preserva o pedido e não chama a IA se a sincronização falhar", async () => {
+    const user = userEvent.setup();
+    renderPanel({ ensurePersisted: vi.fn().mockRejectedValue(new Error("Falha ao salvar a Peça.")) });
+    const composer = await screen.findByRole("textbox", { name: "O que você quer que a IA faça?" });
+    await user.type(composer, "Revise a peça.");
+    await user.click(screen.getByRole("button", { name: "Enviar para IA" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Falha ao salvar a Peça.");
+    expect(composer).toHaveValue("Revise a peça.");
     expect(mockedStream).not.toHaveBeenCalled();
   });
 
-  it("envia pergunta sem seleção sem anexar conteúdo da Peça", async () => {
-    const user = userEvent.setup();
-    completeImmediately(completedEvent("ResponderNoPainel"));
-    renderPanel();
-
-    await user.type(
-      await screen.findByRole("textbox", { name: "O que você quer que a IA faça?" }),
-      "O que falta nesta fundamentação?",
-    );
-    await user.click(screen.getByRole("button", { name: "Enviar para IA" }));
-    await screen.findByRole("heading", { name: "Resposta da IA" });
-
-    expect(mockedStream).toHaveBeenCalledOnce();
-    const [, request] = mockedStream.mock.calls[0];
-    expect(request).toMatchObject({
-      modo: "Perguntar",
-      instrucao: "O que falta nesta fundamentação?",
-      operacaoPreferida: "ResponderNoPainel",
-      contexto: {
-        documento: {
-          escopo: "Nenhum",
-          texto: null,
-          selecao: null,
-        },
-      },
-    });
-  });
-
-  it("anexa automaticamente a seleção como chip e envia o snapshot capturado", async () => {
+  it("não envia uma peça alterada durante a sincronização", async () => {
     const user = userEvent.setup();
     const editor = createEditor();
-    const range = findText(editor, "Trecho original.");
-    editor.commands.setTextSelection(range);
-    completeImmediately(completedEvent("ResponderNoPainel"));
-    renderPanel({ editor, editorRevision: 3 });
-
-    expect(await screen.findByText("Seleção · 16 caracteres")).toBeVisible();
-    editor.commands.setTextSelection(1);
-    await user.type(
-      screen.getByRole("textbox", { name: "O que você quer que a IA faça?" }),
-      "Analise este trecho.",
-    );
-    await user.click(screen.getByRole("button", { name: "Enviar para IA" }));
-    await screen.findByRole("heading", { name: "Resposta da IA" });
-
-    const [, request] = mockedStream.mock.calls[0];
-    expect(request.contexto.documento).toMatchObject({
-      escopo: "Selecao",
-      texto: "Trecho original.",
-      selecao: {
-        from: range.from,
-        to: range.to,
-        textoOriginal: "Trecho original.",
-      },
-      revisaoEditor: 3,
-    });
-  });
-
-  it("captura uma nova seleção quando o foco retorna do editor para o assistente", async () => {
-    const editor = createEditor();
-    renderPanel({ editor, editorRevision: 4 });
+    renderPanel({ editor, ensurePersisted: async () => { editor.commands.setContent("<p>Texto novo</p>"); return 2; } });
     const composer = await screen.findByRole("textbox", { name: "O que você quer que a IA faça?" });
-    expect(screen.queryByText(/Seleção · 16 caracteres/)).not.toBeInTheDocument();
-
-    editor.commands.setTextSelection(findText(editor, "Trecho original."));
-    fireEvent.focus(composer, { relatedTarget: editor.view.dom });
-
-    expect(await screen.findByText("Seleção · 16 caracteres")).toBeVisible();
-  });
-
-  it("permite remover a seleção automática antes do envio", async () => {
-    const user = userEvent.setup();
-    const editor = createEditor();
-    editor.commands.setTextSelection(findText(editor, "Trecho original."));
-    completeImmediately(completedEvent("ResponderNoPainel"));
-    renderPanel({ editor });
-
-    await user.click(await screen.findByRole("button", { name: "Remover contexto: Seleção · 16 caracteres" }));
-    await user.type(
-      screen.getByRole("textbox", { name: "O que você quer que a IA faça?" }),
-      "Responda sem usar a seleção.",
-    );
+    await user.type(composer, "Revise a peça.");
     await user.click(screen.getByRole("button", { name: "Enviar para IA" }));
-    await screen.findByRole("heading", { name: "Resposta da IA" });
-
-    const [, request] = mockedStream.mock.calls[0];
-    expect(request.contexto.documento).toMatchObject({
-      escopo: "Nenhum",
-      texto: null,
-      selecao: null,
-    });
-  });
-
-  it("representa os contextos opcionais como chips removíveis", async () => {
-    const user = userEvent.setup();
-    mockedContexts.mockResolvedValue([{
-      id: "contexto-1",
-      casoId: peca.casoId,
-      tipo: "Observacao",
-      titulo: "Notas estratégicas",
-      conteudo: "Conteúdo",
-      dataCriacao: "2026-09-30T00:00:00Z",
-      dataAtualizacao: "2026-09-30T00:00:00Z",
-    }]);
-    renderPanel();
-
-    await user.click(await screen.findByText("+ Adicionar contexto"));
-    const caseCheckbox = screen.getByRole("checkbox", { name: /Incluir dados do caso/ });
-    const contextCheckbox = await screen.findByRole("checkbox", { name: /Notas estratégicas/ });
-    await user.click(caseCheckbox);
-    await user.click(contextCheckbox);
-    await user.type(
-      screen.getByRole("textbox", { name: "Informação apenas para este pedido" }),
-      "Dado temporário.",
-    );
-
-    await user.click(screen.getByRole("button", { name: "Remover contexto: Dados essenciais do Caso" }));
-    await user.click(screen.getByRole("button", { name: "Remover contexto: Notas estratégicas" }));
-    await user.click(screen.getByRole("button", { name: /Remover contexto: Informação adicional/ }));
-
-    expect(caseCheckbox).not.toBeChecked();
-    expect(contextCheckbox).not.toBeChecked();
-    expect(screen.getByRole("textbox", { name: "Informação apenas para este pedido" })).toHaveValue("");
-  });
-
-  it("envia seleção e somente os contextos explicitamente marcados", async () => {
-    const user = userEvent.setup();
-    const editor = createEditor();
-    const range = findText(editor, "Trecho original.");
-    editor.commands.setTextSelection(range);
-    mockedContexts.mockResolvedValue([{
-      id: "contexto-1",
-      casoId: peca.casoId,
-      tipo: "Observacao",
-      titulo: "Notas estratégicas",
-      conteudo: "Conteúdo",
-      dataCriacao: "2026-09-30T00:00:00Z",
-      dataAtualizacao: "2026-09-30T00:00:00Z",
-    }]);
-    completeImmediately(completedEvent("SubstituirSelecao", {
-      from: range.from,
-      to: range.to,
-      textoOriginal: "Trecho original.",
-    }));
-    renderPanel({ editor });
-
-    await user.click(await screen.findByRole("button", { name: "Reescrever" }));
-    await user.click(screen.getByText("+ Adicionar contexto"));
-    await user.click(screen.getByRole("checkbox", { name: /Incluir dados do caso/ }));
-    await user.click(await screen.findByRole("checkbox", { name: /Notas estratégicas/ }));
-    await user.type(
-      screen.getByRole("textbox", { name: "Informação apenas para este pedido" }),
-      "Considere o risco processual.",
-    );
-    await user.click(screen.getByRole("button", { name: "Enviar para IA" }));
-    await screen.findByRole("heading", { name: "Resposta da IA" });
-
-    const [, request] = mockedStream.mock.calls[0];
-    expect(request.contexto).toMatchObject({
-      incluirDadosCaso: true,
-      contextoCasoIds: ["contexto-1"],
-      contextoAdicional: "Considere o risco processual.",
-      documento: {
-        escopo: "Selecao",
-        selecao: {
-          from: range.from,
-          to: range.to,
-          textoOriginal: "Trecho original.",
-        },
-      },
-    });
+    expect(await screen.findByRole("alert")).toHaveTextContent("A Peça mudou durante a sincronização");
+    expect(composer).toHaveValue("Revise a peça.");
+    expect(mockedStream).not.toHaveBeenCalled();
   });
 
   it("anuncia streaming, agrega deltas e apresenta a conclusão", async () => {
     const user = userEvent.setup();
     let completeRequest: (() => void) | undefined;
-    mockedStream.mockImplementation(async (_pecaId, _request, handlers) => {
+    mockedStream.mockImplementation(async (_conversationId, _request, handlers) => {
       handlers.onStarted?.({ solicitacaoId: "sol-1", clientRequestId: "req-1" });
       handlers.onDelta?.("Resposta parcial");
       await new Promise<void>((resolve) => {
@@ -318,7 +250,7 @@ describe("AssistantPanel", () => {
     const user = userEvent.setup();
     const editor = createEditor();
     const originalJson = editor.getJSON();
-    mockedStream.mockImplementation((_pecaId, _request, handlers, signal) => {
+    mockedStream.mockImplementation((_conversationId, _request, handlers, signal) => {
       handlers.onStarted?.({ solicitacaoId: "sol-1", clientRequestId: "req-1" });
       return new Promise<void>((_resolve, reject) => {
         signal.addEventListener("abort", () => reject(signal.reason), { once: true });
@@ -337,21 +269,15 @@ describe("AssistantPanel", () => {
     expect(editor.getJSON()).toEqual(originalJson);
   });
 
-  it("preserva instrução e contexto adicional após erro recuperável", async () => {
+  it("preserva a mensagem após erro recuperável", async () => {
     const user = userEvent.setup();
     mockedStream.mockRejectedValue(new ApiError("Falha temporária do provider.", 503, "AI_UNAVAILABLE"));
     renderPanel();
     const instruction = await screen.findByRole("textbox", { name: "O que você quer que a IA faça?" });
-
-    await user.type(instruction, "Revise a fundamentação.");
-    await user.click(screen.getByText("+ Adicionar contexto"));
-    const additionalContext = screen.getByRole("textbox", { name: "Informação apenas para este pedido" });
-    await user.type(additionalContext, "Considere o documento ainda não juntado.");
+    await user.type(instruction, "Revise a fundamentação considerando o documento ainda não juntado.");
     await user.click(screen.getByRole("button", { name: "Enviar para IA" }));
-
     expect(await screen.findByRole("alert")).toHaveTextContent("Falha temporária do provider.");
-    expect(instruction).toHaveValue("Revise a fundamentação.");
-    expect(additionalContext).toHaveValue("Considere o documento ainda não juntado.");
+    expect(instruction).toHaveValue("Revise a fundamentação considerando o documento ainda não juntado.");
   });
 
   it("exibe somente modos e ações liberados pelas capacidades", async () => {
@@ -396,7 +322,7 @@ describe("AssistantPanel", () => {
     }));
     renderPanel({ editor, editorRevision: 1, saveState: "SALVO" });
 
-    await user.click(await screen.findByRole("button", { name: "Reescrever" }));
+    await user.type(await screen.findByRole("textbox", { name: "O que você quer que a IA faça?" }), "Reescreva o parágrafo inicial.");
     await user.click(screen.getByRole("button", { name: "Enviar para IA" }));
     await user.click(await screen.findByText("Ver texto original"));
     expect(screen.getByText("Trecho original.")).toBeVisible();
@@ -427,7 +353,7 @@ describe("AssistantPanel", () => {
     }));
     renderPanel({ editor, editorRevision: 2 });
 
-    await user.click(await screen.findByRole("button", { name: "Reescrever" }));
+    await user.type(await screen.findByRole("textbox", { name: "O que você quer que a IA faça?" }), "Reescreva o parágrafo inicial.");
     await user.click(screen.getByRole("button", { name: "Enviar para IA" }));
 
     expect(await screen.findByText(/O documento mudou desde o envio/)).toBeVisible();
@@ -451,7 +377,7 @@ describe("AssistantPanel", () => {
     }));
     renderPanel({ editor, editorRevision: 1, saveState });
 
-    await user.click(await screen.findByRole("button", { name: "Reescrever" }));
+    await user.type(await screen.findByRole("textbox", { name: "O que você quer que a IA faça?" }), "Reescreva o parágrafo inicial.");
     await user.click(screen.getByRole("button", { name: "Enviar para IA" }));
 
     expect(await screen.findByText(message)).toBeVisible();
@@ -535,6 +461,7 @@ function panel(overrides: Partial<ComponentProps<typeof AssistantPanel>> = {}) {
     capabilities={capabilities}
     onCapabilitiesInvalidated={() => undefined}
     onClose={() => undefined}
+    ensurePersisted={async () => peca.versao}
     {...props}
   />;
 }
@@ -563,7 +490,7 @@ function findText(editor: Editor, text: string): { from: number; to: number } {
 }
 
 function completeImmediately(event: AssistantCompletedEvent) {
-  mockedStream.mockImplementation(async (_pecaId, _request, handlers) => {
+  mockedStream.mockImplementation(async (_conversationId, _request, handlers) => {
     handlers.onStarted?.({ solicitacaoId: "sol-1", clientRequestId: "req-1" });
     handlers.onDelta?.(event.sugestao.texto);
     handlers.onCompleted(event);
@@ -608,7 +535,8 @@ const capabilities: AssistantCapabilities = {
     contextoAdicionalCaracteres: 8_000,
   },
   suportaStreaming: true,
-  suportaHistorico: false,
+  suportaHistorico: true,
+  suportaConversaLivre: true,
 };
 
 const chatOnlyCapabilities: AssistantCapabilities = {

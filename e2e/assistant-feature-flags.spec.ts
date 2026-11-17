@@ -36,41 +36,37 @@ test("falha ao carregar capacidades mantém a funcionalidade fechada", async ({ 
   await expect(page.getByRole("complementary", { name: "Assistente de IA" })).toHaveCount(0);
 });
 
-test("tenant com acesso apenas a chat não recebe ações de edição ou revisão", async ({ page, request }) => {
-  await configureScenario(request, { capabilities: "chat" });
-  await openPieceAndWaitCapabilities(page);
-  await page.locator('[aria-label="Abrir assistente de IA"]:visible').click();
-
-  const mode = page.getByRole("combobox", { name: "Modo" });
-  await expect(mode).toHaveValue("Perguntar");
-  await expect(mode.locator("option")).toHaveCount(1);
-  await expect(page.getByRole("button", { name: "Reescrever", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Expandir", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Revisar", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Novo trecho", exact: true })).toHaveCount(0);
+test("tenant somente de conversa recebe caixa única sem ações de edição", async ({ page, request }) => {
+  await configureScenario(request, { capabilities: "chat" }); await openPieceAndWaitCapabilities(page);
+  await page.getByRole("button", { name: "Abrir assistente de IA" }).click();
+  const instruction = page.getByRole("textbox", { name: "O que você quer que a IA faça?" });
+  await expect(instruction).toBeEnabled(); await expect(page.getByRole("combobox", { name: "Modo" })).toHaveCount(0);
+  for (const name of ["Reescrever", "Expandir", "Revisar", "Novo trecho", "Criar minuta", "Melhorar redação", "Explicar trecho"])
+    await expect(page.getByRole("button", { name, exact: true })).toHaveCount(0);
+  await instruction.fill("Explique a fundamentação."); await page.getByRole("button", { name: "Enviar para IA" }).click();
+  await expect(page.getByRole("heading", { name: "Resposta da IA" })).toBeVisible();
 });
 
-test("revoga um modo após recusa e o restaura no rollback sem perder o pedido", async ({ page, request }) => {
+test("revogar edição preserva pedido e rollback permite reenviá-lo naturalmente", async ({ page, request }) => {
   const editor = await openPieceAndWaitCapabilities(page);
-  await page.locator('[aria-label="Abrir assistente de IA"]:visible').click();
-  await page.getByRole("button", { name: "Novo trecho", exact: true }).click();
+  await page.getByRole("button", { name: "Abrir assistente de IA" }).click();
   const instruction = page.getByRole("textbox", { name: "O que você quer que a IA faça?" });
-  const originalInstruction = await instruction.inputValue();
-
-  await configureScenario(request, { capabilities: "chat" });
+  await instruction.fill("Reescreva o primeiro parágrafo preservando os fatos."); const original = await instruction.inputValue();
+  await configureScenario(request, { capabilities: "chat", reply: "edit" });
   await page.getByRole("button", { name: "Enviar para IA" }).click();
-
   await expect(page.getByRole("alert")).toContainText("não está habilitada");
+  await expect(instruction).toHaveValue(original); await expect(editor).toHaveText("Trecho original.");
+  await configureScenario(request, { capabilities: "all" }); await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await page.getByRole("button", { name: "Enviar para IA" }).click();
+  await expect(page.getByRole("button", { name: "Aprovar todas", exact: true })).toBeEnabled();
+});
+
+test("backend sem suporte ao chat informa indisponibilidade sem reintroduzir controles antigos", async ({ page, request }) => {
+  await configureScenario(request, { capabilities: "legacy" }); await openPieceAndWaitCapabilities(page);
+  await page.getByRole("button", { name: "Abrir assistente de IA" }).click();
+  await expect(page.getByText("O assistente está indisponível neste ambiente.", { exact: false })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "O que você quer que a IA faça?" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Reescrever", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("combobox", { name: "Modo" })).toHaveValue("Perguntar");
-  await expect(instruction).toHaveValue(originalInstruction);
-  await expect(editor).toHaveText("Trecho original.");
-
-  await configureScenario(request, { capabilities: "all" });
-  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-
-  await expect(page.getByRole("button", { name: "Reescrever", exact: true })).toBeVisible();
-  await expect(instruction).toHaveValue(originalInstruction);
 });
 
 test("revogação do acesso base fecha o painel e oculta o acionador", async ({ page, request }) => {

@@ -43,6 +43,15 @@ export interface EditorRequestSnapshot {
   editorRevision: number;
 }
 
+export interface AssistantInteractionRequest {
+  clientRequestId: string;
+  texto: string;
+  versaoPecaEsperada: number;
+  propostaReferenciadaId?: string | null;
+  anexoIds?: string[];
+}
+
+/** Formato persistido de pedidos antigos, mantido para leitura do histórico. */
 export interface AssistantRequest {
   interacaoAutomatica?: boolean;
   propostaReferenciadaId?: string | null;
