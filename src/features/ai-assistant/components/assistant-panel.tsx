@@ -38,6 +38,7 @@ import { GenerationProgress } from "./generation-progress";
 import { DocumentAnalysis } from "./document-analysis";
 import { HistoryContext } from "./history-context";
 import { DocumentCoverage } from "./document-coverage";
+import { sanitizeExternalUrl } from "@/features/pecas/editor/legal-editor-extensions";
 
 interface Props {
   open: boolean;
@@ -653,12 +654,15 @@ function AssistantTransparencyDialog({
         <p className="text-xs text-muted-foreground">
           Esta confirmação registra que o aviso foi apresentado. Ela não autoriza alterações automáticas na Peça.
         </p>
-        {notice.politicaDePrivacidadeUrl ? <a
-          className="inline-flex text-xs font-medium text-primary underline underline-offset-4"
-          href={notice.politicaDePrivacidadeUrl}
-          target="_blank"
-          rel="noreferrer"
-        >Consultar Política de Privacidade</a> : null}
+        {(() => {
+          const safePrivacyUrl = sanitizeExternalUrl(notice.politicaDePrivacidadeUrl, false);
+          return safePrivacyUrl ? <a
+            className="inline-flex text-xs font-medium text-primary underline underline-offset-4"
+            href={safePrivacyUrl}
+            target="_blank"
+            rel="noreferrer"
+          >Consultar Política de Privacidade</a> : null;
+        })()}
         {error ? <ErrorBox message={error} /> : null}
       </div>
       <footer className="flex flex-wrap justify-end gap-2 border-t px-5 py-4">

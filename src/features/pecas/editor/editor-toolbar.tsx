@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { assistantShortcutLabel } from "@/features/ai-assistant/keyboard";
 import type { EditorTheme } from "@/features/pecas/editor/editor-theme";
+import { sanitizeExternalUrl } from "@/features/pecas/editor/legal-editor-extensions";
 import type { EditorZoom } from "@/features/pecas/editor/editor-view";
 import { cn } from "@/lib/utils";
 
@@ -33,7 +34,11 @@ export function EditorToolbar({ editor, theme, onToggleTheme, zoom, effectiveZoo
       {command("Centralizar", editor.isActive({ textAlign: "center" }), AlignCenter, () => editor.chain().focus().setTextAlign("center").run())}
       {command("Alinhar à direita", editor.isActive({ textAlign: "right" }), AlignRight, () => editor.chain().focus().setTextAlign("right").run())}
       {command("Justificar", editor.isActive({ textAlign: "justify" }), AlignJustify, () => editor.chain().focus().setTextAlign("justify").run())}
-      {command("Inserir link", editor.isActive("link"), LinkIcon, () => { const href = window.prompt("Endereço do link"); if (href) editor.chain().focus().extendMarkRange("link").setLink({ href }).run(); })}
+      {command("Inserir link", editor.isActive("link"), LinkIcon, () => {
+        const rawHref = window.prompt("Endereço do link (https://, http:// ou mailto:)");
+        const safeHref = sanitizeExternalUrl(rawHref, true);
+        if (safeHref) editor.chain().focus().extendMarkRange("link").setLink({ href: safeHref }).run();
+      })}
     </div>
     <div className="flex shrink-0 items-center gap-1 border-l border-border bg-card px-2">
       {assistantAvailable ? <><Button
