@@ -54,7 +54,7 @@ export function DocumentAnalysis({ conversationId, analysisId, onTerminal, manag
       {active(analysis.estado) ? <p className="mt-1">Você pode fechar esta tela. O servidor continuará a análise e preparará o resultado para revisão.</p> : null}
       {analysis.trechosExcluidos > 0 ? <p className="mt-1">{analysis.trechosExcluidos} trechos excluídos por leitura incompleta ou duvidosa.</p> : null}
       {analysis.trechosExcluidos === 0 && analysis.fontes.some(source => source.estado !== "Concluido") ? <p className="mt-1">Há arquivos com leitura incompleta. Somente os trechos elegíveis entraram na análise.</p> : null}
-      {analysis.estado === "Interrompida" ? <p className="mt-1">As etapas concluídas foram preservadas. Retomar pode fazer uma nova chamada à IA para a etapa sem confirmação de conclusão.</p> : null}
+      {analysis.estado === "Interrompida" ? <p className="mt-1">{analysis.codigoErro === "AI_MONTHLY_LIMIT_REACHED" ? "Limite mensal atingido. " : analysis.codigoErro === "AI_MONTHLY_LIMIT_INSUFFICIENT" ? "Limite disponível insuficiente para esta operação. " : ""}As etapas concluídas foram preservadas. Retomar pode fazer uma nova chamada à IA para a etapa sem confirmação de conclusão.</p> : null}
       {analysis.estado === "Incompleta" ? <p className="mt-1">O limite desta execução foi atingido. Há etapas ainda pendentes; nenhuma alteração incompleta foi aplicada.</p> : null}
       {analysis.estado === "Desatualizada" ? <p className="mt-1">Faça um novo pedido com as fontes e a versão atual da Peça. O trabalho anterior continua salvo.</p> : null}
       <details className="mt-2"><summary className="cursor-pointer">Ver andamento por arquivo</summary>

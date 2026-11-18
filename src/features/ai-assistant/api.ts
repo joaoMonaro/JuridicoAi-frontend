@@ -2,6 +2,7 @@ import { consumeAssistantEventStream } from "@/features/ai-assistant/sse-parser"
 import type {
   AssistantCapabilities,
   AssistantInteractionRequest,
+  AssistantMonthlyLimit,
   AssistantStreamHandlers,
   AssistantTransparency,
 } from "@/features/ai-assistant/types";
@@ -9,6 +10,9 @@ import { ApiError, apiFetch, apiRequest } from "@/lib/api-client";
 
 export const getAssistantCapabilities = (signal?: AbortSignal) =>
   apiRequest<AssistantCapabilities>("/assistente/capacidades", { signal });
+
+export const getAssistantMonthlyLimit = (signal?: AbortSignal) =>
+  apiRequest<AssistantMonthlyLimit>("/assistente/limite-mensal", { signal });
 
 export const getAssistantTransparency = (signal?: AbortSignal) =>
   apiRequest<AssistantTransparency>("/assistente/transparencia", { signal });

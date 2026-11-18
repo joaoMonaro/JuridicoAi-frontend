@@ -1,6 +1,6 @@
 import type { Editor } from "@tiptap/react";
 import { AlertTriangle, Check, CircleAlert, Copy, LoaderCircle, Maximize2, Minimize2, MoveHorizontal, RotateCcw, Send, ShieldCheck, Sparkles, Square, WandSparkles, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -38,6 +38,8 @@ import { GenerationProgress } from "./generation-progress";
 import { DocumentAnalysis } from "./document-analysis";
 import { HistoryContext } from "./history-context";
 import { DocumentCoverage } from "./document-coverage";
+import { MonthlyLimitBanner } from "./monthly-limit-banner";
+import { useAssistantMonthlyLimit } from "../use-assistant-monthly-limit";
 import { sanitizeExternalUrl } from "@/features/pecas/editor/legal-editor-extensions";
 
 interface Props {
@@ -126,6 +128,14 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
   const free = capabilities.suportaConversaLivre === true;
   const documents = useAssistantDocuments(open && free && Boolean(capabilities.documentos) && transparency?.confirmado === true, history.conversationId);
   const documentsBlocked = Boolean(capabilities.documentos) && (documents.loading || documents.uploading || (!capabilities.suportaGeracaoDuravel && documents.processing) || Boolean(documents.error));
+  const durableActive = history.generating || turns.some((turn) => turn.status === "analyzing");
+  const monthlyLimit = useAssistantMonthlyLimit(open && capabilities.habilitado && transparency?.confirmado === true, durableActive);
+  const limitBlocked = Boolean(monthlyLimit.limit?.bloqueadoParaNovasChamadas || monthlyLimit.limit?.estado === "Indisponivel");
+  const { refresh: refreshHistory } = history;
+  const { refresh: refreshMonthlyLimit } = monthlyLimit;
+  const handleTurnTerminal = useCallback(async () => {
+    await Promise.all([refreshHistory(), refreshMonthlyLimit()]);
+  }, [refreshHistory, refreshMonthlyLimit]);
 
   useEffect(() => {
     if (!open || !capabilities.habilitado || transparency || transparencyError) return;
@@ -197,7 +207,7 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
     // Historical retries contribute only the message to the new interaction.
     const text = (previousTurn?.instruction ?? instruction).trim();
     const conversationId = history.conversationId;
-    if (!free || !editor || !conversationId || !capabilities.habilitado || !capabilities.modos.includes("Perguntar") || !text || busy || sending.current || historyBlocked || documentsBlocked || blocked) return;
+    if (!free || !editor || !conversationId || !capabilities.habilitado || !capabilities.modos.includes("Perguntar") || !text || busy || sending.current || historyBlocked || documentsBlocked || blocked || limitBlocked) return;
     setComposerError("");
 
     let version: number;
@@ -306,6 +316,7 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
     } finally {
       sending.current = false;
       if (capabilities.suportaHistorico) void history.refresh();
+      void monthlyLimit.refresh();
       if (requestController.current === controller) requestController.current = null;
       setActiveTurnId((current) => current === clientRequestId ? null : current);
       requestAnimationFrame(() => instructionRef.current?.focus());
@@ -422,7 +433,7 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
       <Button type="button" size="icon-sm" variant="ghost" onClick={close} aria-label="Fechar assistente"><X /></Button>
     </header>
 
-    <div ref={messageListRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-4" role="log" aria-label="Conversa com o assistente" aria-live="polite" aria-busy={busy}>
+    <div ref={messageListRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-4" role="log" tabIndex={0} aria-label="Conversa com o assistente" aria-live="polite" aria-busy={busy}>
       {capabilities.habilitado && !transparency && !transparencyError ? <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><LoaderCircle className="animate-spin" />Consultando disponibilidade...</div> : null}
       {transparencyError && !transparency ? <div><ErrorBox message={transparencyError} /><Button type="button" size="sm" variant="outline" className="mt-2" onClick={() => setTransparencyError("")}><RotateCcw />Tentar novamente</Button></div> : null}
       {capabilities.suportaHistorico && transparency?.confirmado ? <div className="mb-4 space-y-2 text-xs text-muted-foreground">
@@ -442,7 +453,8 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
           key={turn.id}
           turn={turn}
           conversationId={history.conversationId}
-          onRefreshHistory={history.refresh}
+          onRefreshHistory={handleTurnTerminal}
+          limitBlocked={limitBlocked}
           editor={editor}
           editorRevision={editorRevision}
           saveState={saveState}
@@ -460,6 +472,7 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
 
     {capabilities.habilitado && transparency?.confirmado && !free ? <p role="status" className="border-t p-3 text-xs text-muted-foreground">O assistente está indisponível neste ambiente. O histórico permanece disponível para consulta.</p> : null}
     {capabilities.habilitado && transparency?.confirmado && free ? <footer className="shrink-0 border-t bg-card p-3">
+      <MonthlyLimitBanner limit={monthlyLimit.limit} loading={monthlyLimit.loading} error={monthlyLimit.error} onRetry={() => { void monthlyLimit.refresh(); }} />
       {capabilities.documentos && free ? <AssistantDocuments documents={documents} limits={capabilities.documentos} disabled={busy || blocked || historyBlocked} /> : null}
       {composerError ? <div className="mb-2"><ErrorBox message={composerError} /></div> : null}
       <label className="sr-only" htmlFor="assistant-composer">O que você quer que a IA faça?</label>
@@ -482,7 +495,7 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
         />
         <div className="flex items-center justify-between gap-2 px-2 pb-2">
           <span className="text-[10px] text-muted-foreground">Peça salva e conversa</span>
-          {busy ? <Button type="button" size="icon-sm" variant="outline" onClick={cancel} aria-label="Cancelar"><Square className="size-3 fill-current" /></Button> : <Button type="button" size="icon-sm" disabled={!editor || !instruction.trim() || historyBlocked || documentsBlocked || blocked} onClick={() => void submit()} aria-label="Enviar para IA"><Send /></Button>}
+          {busy ? <Button type="button" size="icon-sm" variant="outline" onClick={cancel} aria-label="Cancelar"><Square className="size-3 fill-current" /></Button> : <Button type="button" size="icon-sm" disabled={!editor || !instruction.trim() || historyBlocked || documentsBlocked || blocked || limitBlocked} onClick={() => void submit()} aria-label="Enviar para IA"><Send /></Button>}
         </div>
       </div>
     </footer> : null}
@@ -508,6 +521,7 @@ function ConversationEmptyState() {
 interface ConversationTurnProps {
   conversationId: string | null;
   onRefreshHistory: () => Promise<void>;
+  limitBlocked?: boolean;
   turn: ConversationTurn;
   editor: Editor | null;
   editorRevision: number;
@@ -522,7 +536,7 @@ interface ConversationTurnProps {
   onOpenProposal: () => void;
 }
 
-function ConversationTurnView({ turn, conversationId, onRefreshHistory, editor, editorRevision, saveState, reviewInDocument, onTextChange, onApply, onReject, onRetry, onCopy, currentProposal, onOpenProposal }: ConversationTurnProps) {
+function ConversationTurnView({ turn, conversationId, onRefreshHistory, limitBlocked = false, editor, editorRevision, saveState, reviewInDocument, onTextChange, onApply, onReject, onRetry, onCopy, currentProposal, onOpenProposal }: ConversationTurnProps) {
   const suggestion = turn.completed?.sugestao ?? null;
   const anchorValid = useMemo(
     () => Boolean(editor && suggestion && isSuggestionAnchorValid(editor, suggestion, editorRevision)),
@@ -549,7 +563,7 @@ function ConversationTurnView({ turn, conversationId, onRefreshHistory, editor, 
         {turn.streamedText ? <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{turn.streamedText}</p> : null}
       </> : null}
       {turn.status === "cancelled" || turn.status === "error" ? <ErrorBox message={turn.error} /> : null}
-      {turn.historical && !turn.generationId && (turn.status === "cancelled" || turn.status === "error") ? <Button size="sm" variant="outline" onClick={onRetry}>Reenviar pedido</Button> : null}
+      {turn.historical && !turn.generationId && (turn.status === "cancelled" || turn.status === "error") ? <Button size="sm" variant="outline" disabled={limitBlocked} onClick={onRetry}>Reenviar pedido</Button> : null}
       {turn.historical && !turn.completed && turn.status === "completed" ? <p className="whitespace-pre-wrap text-sm leading-6">{turn.streamedText}</p> : null}
       {turn.error && turn.status !== "cancelled" && turn.status !== "error" ? <div className="mb-3"><ErrorBox message={turn.error} /></div> : null}
       {turn.completed && suggestion ? <>
@@ -568,6 +582,7 @@ function ConversationTurnView({ turn, conversationId, onRefreshHistory, editor, 
           onApply={onApply}
           onReject={onReject}
           onRetry={onRetry}
+          retryDisabled={limitBlocked}
           onCopy={onCopy}
         />}
       </> : null}
@@ -686,11 +701,12 @@ interface ResultProps {
   onApply: () => void;
   onReject: () => void;
   onRetry: () => void;
+  retryDisabled?: boolean;
   onCopy: () => void;
   reviewInDocument: boolean;
 }
 
-function SuggestionResult({ completed, editableText, phase, anchorValid, canApply, saveState, onTextChange, onApply, onReject, onRetry, onCopy, reviewInDocument }: ResultProps) {
+function SuggestionResult({ completed, editableText, phase, anchorValid, canApply, saveState, onTextChange, onApply, onReject, onRetry, retryDisabled = false, onCopy, reviewInDocument }: ResultProps) {
   const { sugestao } = completed;
   const canWrite = sugestao.operacaoSugerida !== "ResponderNoPainel";
   const saveBlockingMessage = saveState === "SALVO" ? null
@@ -717,7 +733,7 @@ function SuggestionResult({ completed, editableText, phase, anchorValid, canAppl
     <div className="mt-3 flex flex-wrap gap-1.5">
       {canWrite ? <Button type="button" size="sm" disabled={!canApply} onClick={onApply}><ShieldCheck />{reviewInDocument ? "Revisar no documento" : operationLabels[sugestao.operacaoSugerida]}</Button> : null}
       <Button type="button" size="sm" variant="outline" onClick={onCopy} disabled={!editableText}><Copy />Copiar</Button>
-      <Button type="button" size="sm" variant="ghost" onClick={onRetry}><RotateCcw />Tentar novamente</Button>
+      <Button type="button" size="sm" variant="ghost" disabled={retryDisabled} onClick={onRetry}><RotateCcw />Tentar novamente</Button>
       <Button type="button" size="sm" variant="ghost" onClick={onReject} disabled={phase !== "completed"}>Rejeitar</Button>
     </div>
   </section>;

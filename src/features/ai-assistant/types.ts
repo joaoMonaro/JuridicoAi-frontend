@@ -170,3 +170,21 @@ export interface AssistantDocumentCoverage {
   fontes: { id: string; nome: string; origem: string; trechosElegiveis: number; trechosConsultados: number;
     trechosExcluidos: number; estado: string; trechosAnalisados?: number }[];
 }
+
+export type AssistantMonthlyLimitState =
+  | "Disponivel"
+  | "Atencao70"
+  | "Critico90"
+  | "Atingido"
+  | "Indisponivel";
+
+export interface AssistantMonthlyLimit {
+  periodoReferencia: string;
+  estado: AssistantMonthlyLimitState;
+  percentualUtilizado: number | null;
+  percentualReservado: number | null;
+  percentualDisponivel: number | null;
+  possuiReservasEmAndamento: boolean;
+  bloqueadoParaNovasChamadas: boolean;
+  mensagemStatus?: string | null;
+}

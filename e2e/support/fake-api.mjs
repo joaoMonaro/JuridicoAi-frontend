@@ -71,6 +71,14 @@ const server = createServer(async (request, response) => {
         sendJson(response, 428, { code: "AI_TRANSPARENCY_ACK_REQUIRED", detail: "Leia e confirme o aviso de uso da inteligência artificial antes de continuar." }); return;
       }
       const input = await readJson(request); sentMessages.push(input);
+      const limitSnapshot = assistantMonthlyLimit(scenario.monthlyLimit);
+      if (limitSnapshot && limitSnapshot.bloqueadoParaNovasChamadas) {
+        sendJson(response, 429, {
+          code: limitSnapshot.estado === "Atingido" ? "AI_MONTHLY_LIMIT_REACHED" : "AI_MONTHLY_LIMIT_INSUFFICIENT",
+          detail: limitSnapshot.mensagemStatus || "Limite mensal atingido.",
+        });
+        return;
+      }
       const piece = structuredClone(pecas.get(conversation.pecaId));
       if (input.versaoPecaEsperada !== piece.versao) { sendJson(response, 409, { code: "AI_DOCUMENT_STALE", detail: "A Peça mudou." }); return; }
       if (scenario.assistant === "error") { sendJson(response, 503, { code: "AI_UNAVAILABLE", detail: "O provedor de IA está temporariamente indisponível." }); return; }
@@ -142,6 +150,14 @@ const server = createServer(async (request, response) => {
       return;
     }
     sendJson(response, 200, assistantCapabilities(scenario.capabilities));
+    return;
+  }
+  if (request.method === "GET" && url.pathname === "/api/assistente/limite-mensal") {
+    if (scenario.monthlyLimit === "error") {
+      sendJson(response, 503, { code: "AI_UNAVAILABLE", detail: "Não foi possível consultar o limite mensal." });
+      return;
+    }
+    sendJson(response, 200, assistantMonthlyLimit(scenario.monthlyLimit));
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/assistente/transparencia") {
@@ -360,6 +376,83 @@ function initialScenario() {
     autosave: "success",
     capabilities: "all",
     transparency: "acknowledged",
+    monthlyLimit: "available",
+  };
+}
+
+function assistantMonthlyLimit(setting) {
+  const period = new Date().toISOString().slice(0, 7);
+  if (setting && typeof setting === "object") {
+    return {
+      periodoReferencia: period,
+      estado: "Disponivel",
+      percentualUtilizado: 0,
+      percentualReservado: 0,
+      percentualDisponivel: 100,
+      possuiReservasEmAndamento: false,
+      bloqueadoParaNovasChamadas: false,
+      mensagemStatus: null,
+      ...setting,
+    };
+  }
+  if (setting === "attention70") {
+    return {
+      periodoReferencia: period,
+      estado: "Atencao70",
+      percentualUtilizado: 70,
+      percentualReservado: 0,
+      percentualDisponivel: 30,
+      possuiReservasEmAndamento: false,
+      bloqueadoParaNovasChamadas: false,
+      mensagemStatus: "Você utilizou 70% do limite mensal.",
+    };
+  }
+  if (setting === "critical90") {
+    return {
+      periodoReferencia: period,
+      estado: "Critico90",
+      percentualUtilizado: 80,
+      percentualReservado: 10,
+      percentualDisponivel: 10,
+      possuiReservasEmAndamento: true,
+      bloqueadoParaNovasChamadas: false,
+      mensagemStatus: "Restam 10% do limite mensal.",
+    };
+  }
+  if (setting === "reserved_blocked") {
+    return {
+      periodoReferencia: period,
+      estado: "Critico90",
+      percentualUtilizado: 75,
+      percentualReservado: 25,
+      percentualDisponivel: 0,
+      possuiReservasEmAndamento: true,
+      bloqueadoParaNovasChamadas: true,
+      mensagemStatus: "Limite disponível insuficiente para esta operação.",
+    };
+  }
+  if (setting === "reached") {
+    return {
+      periodoReferencia: period,
+      estado: "Atingido",
+      percentualUtilizado: 100,
+      percentualReservado: 0,
+      percentualDisponivel: 0,
+      possuiReservasEmAndamento: false,
+      bloqueadoParaNovasChamadas: true,
+      mensagemStatus: "Limite mensal atingido.",
+    };
+  }
+  if (setting === "error") return null;
+  return {
+    periodoReferencia: period,
+    estado: "Disponivel",
+    percentualUtilizado: 10,
+    percentualReservado: 0,
+    percentualDisponivel: 90,
+    possuiReservasEmAndamento: false,
+    bloqueadoParaNovasChamadas: false,
+    mensagemStatus: null,
   };
 }
 

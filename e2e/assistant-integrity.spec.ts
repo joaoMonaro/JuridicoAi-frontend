@@ -17,6 +17,8 @@ test("pergunta responde no painel sem alterar ou salvar a peça", async ({ page 
 test("trocar de peça aborta o stream e ignora resposta tardia", async ({ page, request }) => {
   await configure(request, { assistant: "slow" }); await startEdit(page, request);
   await expect(page.getByText("A IA está elaborando a resposta...", { exact: true })).toBeVisible();
+  const openExplorer = page.getByRole("button", { name: "Exibir explorador", exact: true });
+  if (await openExplorer.isVisible()) await openExplorer.click();
   await page.getByRole("button", { name: "Contestação E2E" }).click();
   await expect(page.locator(".ProseMirror")).toHaveText("Conteúdo da segunda peça.");
   await expect(page.getByRole("complementary", { name: "Assistente de IA" })).not.toBeVisible();

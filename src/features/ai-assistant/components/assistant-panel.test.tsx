@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   confirmAssistantTransparency,
+  getAssistantMonthlyLimit,
   getAssistantTransparency,
   streamAssistantInteraction,
 } from "@/features/ai-assistant/api";
@@ -24,6 +25,7 @@ import { ApiError } from "@/lib/api-client";
 
 vi.mock("@/features/ai-assistant/api", () => ({
   confirmAssistantTransparency: vi.fn(),
+  getAssistantMonthlyLimit: vi.fn(),
   getAssistantTransparency: vi.fn(),
   streamAssistantInteraction: vi.fn(),
   rejectAssistantResponse: vi.fn(),
@@ -37,16 +39,28 @@ vi.mock("@/features/contextos/api", () => ({
 
 const editors: Editor[] = [];
 const mockedTransparency = vi.mocked(getAssistantTransparency);
+const mockedMonthlyLimit = vi.mocked(getAssistantMonthlyLimit);
 const mockedConfirmTransparency = vi.mocked(confirmAssistantTransparency);
 const mockedStream = vi.mocked(streamAssistantInteraction);
 const mockedContexts = vi.mocked(listarContextos);
 
 beforeEach(() => {
   mockedTransparency.mockReset();
+  mockedMonthlyLimit.mockReset();
   mockedConfirmTransparency.mockReset();
   mockedStream.mockReset();
   mockedContexts.mockReset();
   mockedTransparency.mockResolvedValue(confirmedTransparency);
+  mockedMonthlyLimit.mockResolvedValue({
+    periodoReferencia: new Date().toISOString().slice(0, 7),
+    estado: "Disponivel",
+    percentualUtilizado: 12,
+    percentualReservado: 0,
+    percentualDisponivel: 88,
+    possuiReservasEmAndamento: false,
+    bloqueadoParaNovasChamadas: false,
+    mensagemStatus: null,
+  });
   mockedConfirmTransparency.mockResolvedValue(confirmedTransparency);
   mockedContexts.mockResolvedValue([]);
   vi.mocked(useAssistantHistory).mockReturnValue({ conversationId: "conversa-1", messages: [], loading: false, error: "", hasOlder: false, generating: false, refresh: vi.fn().mockResolvedValue(undefined), loadOlder: vi.fn().mockResolvedValue(undefined) });

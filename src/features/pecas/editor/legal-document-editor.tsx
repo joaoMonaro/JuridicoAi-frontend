@@ -86,7 +86,7 @@ export function LegalDocumentEditor({ peca, onChanged, onReload, focusMode, onTo
   const editor = useEditor({
     extensions: createLegalEditorExtensions(),
     content: normalizeLegalDocument(peca.conteudoJson),
-    editorProps: { attributes: { class: "legal-editor-content focus:outline-none" } },
+    editorProps: { attributes: { class: "legal-editor-content focus:outline-none", "aria-label": "Conteúdo da peça", "aria-multiline": "true" } },
     onCreate: ({ editor: current }) => {
       const text = current.getText();
       setStats({ characters: text.length, words: text.trim() ? text.trim().split(/\s+/u).length : 0 });
