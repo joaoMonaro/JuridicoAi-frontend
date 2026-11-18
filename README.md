@@ -1,5 +1,11 @@
 # JuridicoAI — frontend
 
+## Versionamento
+
+`main` recebe versões aprovadas para produção; `homologacao` integra o trabalho
+para validação. Novas tarefas seguem `feature/* → homologacao → main`.
+Veja o [fluxo de versionamento e promoção](docs/versionamento.md).
+
 ## Estado atual do assistente
 
 [Andamento, integrações e limites atuais](docs/assistant-implementation-status.md).
