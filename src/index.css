@@ -8,6 +8,7 @@
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: "Geist Variable", sans-serif;
+  --font-serif: "Georgia", "Times New Roman", serif;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -43,36 +44,68 @@
 }
 
 :root {
-  color-scheme: dark;
-  --background: #0e141b;
-  --foreground: #e7ecf2;
-  --card: #151d26;
-  --card-foreground: #e7ecf2;
-  --popover: #19232d;
-  --popover-foreground: #e7ecf2;
-  --primary: #287fa3;
-  --primary-foreground: #ffffff;
-  --secondary: #19232d;
-  --secondary-foreground: #e7ecf2;
-  --muted: #19232d;
-  --muted-foreground: #94a3b2;
-  --accent: #1c2b36;
-  --accent-foreground: #e7ecf2;
-  --destructive: #e36b6b;
-  --success: #3fa66b;
-  --warning: #d5a443;
-  --border: #283441;
-  --input: #344251;
-  --ring: #4fa3c7;
+  color-scheme: light;
+  --background: #F2EFE9;
+  --foreground: #1E242B;
+  --card: #FAF8F5;
+  --card-foreground: #1E242B;
+  --popover: #FFFFFF;
+  --popover-foreground: #1E242B;
+  --primary: #1B4965;
+  --primary-foreground: #FFFFFF;
+  --secondary: #EDEAE2;
+  --secondary-foreground: #1E242B;
+  --muted: #EDEAE2;
+  --muted-foreground: #4E5661;
+  --accent: #E6F0F5;
+  --accent-foreground: #1B4965;
+  --destructive: #992E2E;
+  --success: #1E563B;
+  --warning: #7A4F13;
+  --border: #E2DDD3;
+  --input: #CFC8BA;
+  --ring: #1B4965;
   --radius: 0.5rem;
-  --sidebar: #111922;
-  --sidebar-foreground: #e7ecf2;
-  --sidebar-primary: #4fa3c7;
-  --sidebar-primary-foreground: #f7fbfd;
-  --sidebar-accent: #192731;
-  --sidebar-accent-foreground: #e7ecf2;
-  --sidebar-border: #283441;
-  --sidebar-ring: #4fa3c7;
+  --sidebar: #FAF8F5;
+  --sidebar-foreground: #1E242B;
+  --sidebar-primary: #1B4965;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #E6F0F5;
+  --sidebar-accent-foreground: #1B4965;
+  --sidebar-border: #E2DDD3;
+  --sidebar-ring: #1B4965;
+}
+
+.dark {
+  color-scheme: dark;
+  --background: #111417;
+  --foreground: #E6E4DF;
+  --card: #171B1F;
+  --card-foreground: #E6E4DF;
+  --popover: #1D2227;
+  --popover-foreground: #E6E4DF;
+  --primary: #3B7A9E;
+  --primary-foreground: #FFFFFF;
+  --secondary: #232930;
+  --secondary-foreground: #E6E4DF;
+  --muted: #232930;
+  --muted-foreground: #9CA3AC;
+  --accent: #1E2D38;
+  --accent-foreground: #E6E4DF;
+  --destructive: #E58585;
+  --success: #5CC292;
+  --warning: #E2B66B;
+  --border: #282F37;
+  --input: #363F49;
+  --ring: #5C9EC4;
+  --sidebar: #171B1F;
+  --sidebar-foreground: #E6E4DF;
+  --sidebar-primary: #67A7CC;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #212A32;
+  --sidebar-accent-foreground: #E6E4DF;
+  --sidebar-border: #282F37;
+  --sidebar-ring: #5C9EC4;
 }
 
 @layer base {
@@ -102,13 +135,13 @@
   }
 
   .legal-editor-page[data-editor-theme="light"] .legal-editor-content {
-    color: #20242a;
-    caret-color: #287fa3;
+    color: #1F242A;
+    caret-color: #1B4965;
   }
 
   .legal-editor-page[data-editor-theme="dark"] .legal-editor-content {
-    color: #dce4eb;
-    caret-color: #53b9e4;
+    color: #E2E0DA;
+    caret-color: #67A7CC;
   }
 
   .legal-editor-content > * + * {
@@ -135,12 +168,12 @@
 
   .legal-editor-page[data-editor-theme="light"] .legal-editor-content h2,
   .legal-editor-page[data-editor-theme="light"] .legal-editor-content h3 {
-    color: #244f63;
+    color: #1B4965;
   }
 
   .legal-editor-page[data-editor-theme="dark"] .legal-editor-content h2,
   .legal-editor-page[data-editor-theme="dark"] .legal-editor-content h3 {
-    color: #4fb8df;
+    color: #67A7CC;
   }
 
   .legal-editor-content ul,
@@ -157,11 +190,11 @@
   }
 
   .legal-editor-page[data-editor-theme="light"] .legal-editor-content blockquote {
-    color: #596675;
+    color: #4E5661;
   }
 
   .legal-editor-page[data-editor-theme="dark"] .legal-editor-content blockquote {
-    color: var(--muted-foreground);
+    color: #9CA3AC;
   }
 
   .legal-editor-content a {
@@ -169,11 +202,11 @@
   }
 
   .legal-editor-page[data-editor-theme="light"] .legal-editor-content a {
-    color: #156b8d;
+    color: #1B4965;
   }
 
   .legal-editor-page[data-editor-theme="dark"] .legal-editor-content a {
-    color: #54bde7;
+    color: #67A7CC;
   }
 
   .legal-editor-content p.is-editor-empty:first-child::before {
@@ -184,10 +217,10 @@
   }
 
   .legal-editor-page[data-editor-theme="light"] .legal-editor-content p.is-editor-empty:first-child::before {
-    color: #6b7280;
+    color: #525B66;
   }
 
   .legal-editor-page[data-editor-theme="dark"] .legal-editor-content p.is-editor-empty:first-child::before {
-    color: var(--muted-foreground);
+    color: #9CA3AC;
   }
 }

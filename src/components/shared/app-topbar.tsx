@@ -1,4 +1,4 @@
-import { Bell, Building2, ChevronLeft, History, LoaderCircle, LogOut, Plus, Save, Scale, UserRound } from "lucide-react";
+import { Building2, ChevronLeft, History, LoaderCircle, LogOut, Plus, Save, Scale, UserRound } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
 import { useState } from "react";
 
@@ -37,32 +37,34 @@ export function AppTopbar({ onCreate, onSave, showCaseNavigation = false, caseTi
   }
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b bg-card px-2 sm:px-4 xl:px-5">
-      <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-        <div className="grid size-8 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground">
-          <Scale className="size-4" aria-hidden="true" />
+    <header className="flex h-11 shrink-0 items-center justify-between border-b border-border bg-card px-2.5 sm:px-4">
+      <div className="flex min-w-0 items-center gap-2 sm:gap-2.5">
+        <div className="grid size-7 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground">
+          <Scale className="size-3.5" aria-hidden="true" />
         </div>
-        <div className="hidden shrink-0 leading-tight sm:block">
+        <div className="hidden shrink-0 items-baseline gap-2 sm:flex">
           <p className="text-sm font-semibold tracking-tight">JurídicoAI</p>
-          <p className="text-[11px] text-muted-foreground">Copilot Jurídico</p>
+          {!showCaseNavigation && session?.organization.nome ? (
+            <span className="border-l border-border pl-2 text-xs text-muted-foreground">{session.organization.nome}</span>
+          ) : null}
         </div>
 
         {showCaseNavigation && (
-          <div className="ml-1 flex min-w-0 items-center gap-2 border-l pl-2 sm:ml-2 sm:gap-3 sm:pl-4">
+          <div className="ml-1 flex min-w-0 items-center gap-2 border-l border-border pl-2 sm:ml-1.5 sm:gap-2.5 sm:pl-3">
             <Button
               asChild
               type="button"
               variant="outline"
               size="icon-sm"
-              className="shrink-0 rounded-full bg-secondary"
+              className="size-7 shrink-0 rounded-md bg-popover"
             >
               <AppLink href="/casos" aria-label="Voltar para a lista de casos" title="Voltar para casos">
                 <ChevronLeft className="size-4" aria-hidden="true" />
               </AppLink>
             </Button>
-            <div className="min-w-0 leading-tight">
-              <p className="hidden text-[10px] font-medium uppercase tracking-wider text-muted-foreground lg:block">Trabalhando em</p>
-              <p className="max-w-24 truncate text-sm font-medium sm:max-w-40 lg:max-w-72" title={caseTitle}>
+            <div className="flex min-w-0 items-center gap-1.5 leading-tight">
+              <span className="hidden text-[11px] font-medium text-muted-foreground lg:inline">Caso:</span>
+              <p className="max-w-28 truncate text-xs font-medium text-foreground sm:max-w-48 lg:max-w-80" title={caseTitle}>
                 {caseTitle || "Carregando caso..."}
               </p>
             </div>
@@ -70,25 +72,27 @@ export function AppTopbar({ onCreate, onSave, showCaseNavigation = false, caseTi
         )}
       </div>
 
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex shrink-0 items-center gap-1.5">
         {logoutError ? <span role="alert" className="max-w-56 text-xs text-destructive">{logoutError}</span> : null}
         {onCreate && (
-          <Button type="button" size="sm" className="px-2 xl:px-3" onClick={onCreate} aria-label="Nova peça" title="Nova peça">
+          <Button type="button" size="sm" className="h-7 px-2.5 text-xs" onClick={onCreate} aria-label="Nova peça" title="Nova peça">
             <Plus data-icon="inline-start" />
             <span className="hidden xl:inline">Nova Peça</span>
           </Button>
         )}
-        {onSave && <Button type="button" variant="ghost" size="sm" className="px-2 xl:px-3" onClick={onSave} aria-label="Salvar peça" title="Salvar peça"><Save /><span className="hidden xl:inline">Salvar</span></Button>}
-        <Button type="button" variant="ghost" size="icon-sm" className="hidden sm:inline-flex" aria-label="Notificações">
-          <Bell />
-        </Button>
+        {onSave && (
+          <Button type="button" variant="outline" size="sm" className="h-7 bg-popover px-2.5 text-xs" onClick={onSave} aria-label="Salvar peça" title="Salvar peça">
+            <Save />
+            <span className="hidden xl:inline">Salvar</span>
+          </Button>
+        )}
         <DropdownMenu.Root>
           <DropdownMenu.Trigger asChild>
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               size="icon-sm"
-              className="ml-1 rounded-full border bg-secondary text-secondary-foreground hover:bg-muted data-[state=open]:bg-muted"
+              className="ml-1 size-7 rounded-full border-border bg-secondary text-secondary-foreground hover:bg-muted data-[state=open]:bg-muted"
               aria-label="Abrir menu do usuário"
             >
               <UserRound className="size-3.5" aria-hidden="true" />
@@ -99,11 +103,11 @@ export function AppTopbar({ onCreate, onSave, showCaseNavigation = false, caseTi
             <DropdownMenu.Content
               align="end"
               sideOffset={8}
-              className="z-50 w-64 rounded-lg border bg-popover p-1 text-popover-foreground shadow-xl outline-none data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
+              className="z-50 w-64 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg outline-none data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
             >
               <DropdownMenu.Label className="p-2 font-normal">
                 <div className="flex items-center gap-3">
-                  <div className="grid size-9 shrink-0 place-items-center rounded-full border bg-secondary text-secondary-foreground">
+                  <div className="grid size-9 shrink-0 place-items-center rounded-full border border-border bg-secondary text-secondary-foreground">
                     <UserRound className="size-4" aria-hidden="true" />
                   </div>
                   <div className="min-w-0">
@@ -112,7 +116,7 @@ export function AppTopbar({ onCreate, onSave, showCaseNavigation = false, caseTi
                   </div>
                 </div>
                 {session?.organization.nome && (
-                  <div className="mt-3 flex items-center gap-2 rounded-md bg-muted/60 px-2.5 py-2 text-xs text-muted-foreground">
+                  <div className="mt-3 flex items-center gap-2 rounded-md bg-muted/70 px-2.5 py-2 text-xs text-muted-foreground">
                     <Building2 className="size-3.5 shrink-0" aria-hidden="true" />
                     <span className="truncate">{session.organization.nome}</span>
                   </div>

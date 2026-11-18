@@ -36,15 +36,15 @@ test("aviso de transparência não possui violações críticas ou sérias", asy
 
 test("streaming não possui violações críticas ou sérias", async ({ page, request }) => {
   await configureScenario(request, { assistant: "slow" });
-  await submitRewrite(page);
+  await submitRewrite(page, request);
   await expect(page.getByText("A IA está elaborando a resposta...", { exact: true })).toBeVisible();
 
   await expectNoSeriousAccessibilityViolations(page);
   await page.getByRole("button", { name: "Cancelar", exact: true }).click();
 });
 
-test("sugestão e diff não possuem violações críticas ou sérias", async ({ page }) => {
-  await submitRewrite(page);
+test("sugestão e diff não possuem violações críticas ou sérias", async ({ page, request }) => {
+  await submitRewrite(page, request);
   await expect(page.getByRole("heading", { name: "Trecho revisado" })).toBeVisible();
 
   await expectNoSeriousAccessibilityViolations(page);
@@ -52,14 +52,14 @@ test("sugestão e diff não possuem violações críticas ou sérias", async ({ 
 
 test("erro do provider não possui violações críticas ou sérias", async ({ page, request }) => {
   await configureScenario(request, { assistant: "error" });
-  await submitRewrite(page);
+  await submitRewrite(page, request);
   await expect(page.getByRole("alert")).toContainText("O provedor de IA está temporariamente indisponível.");
 
   await expectNoSeriousAccessibilityViolations(page);
 });
 
 test("erro de autosave não possui violações críticas ou sérias", async ({ page, request }) => {
-  await submitRewrite(page);
+  await submitRewrite(page, request);
   await expect(page.getByRole("heading", { name: "Trecho revisado" })).toBeVisible();
 
   await configureScenario(request, { autosave: "error" });
@@ -74,12 +74,12 @@ test("erro de autosave não possui violações críticas ou sérias", async ({ p
 
 test("âncora expirada não possui violações críticas ou sérias", async ({ page, request }) => {
   await configureScenario(request, { assistant: "slow" });
-  const editor = await submitRewrite(page);
+  const editor = await submitRewrite(page, request);
   await expect(page.getByText("A IA está elaborando a resposta...", { exact: true })).toBeVisible();
 
   await placeCaretAtEnd(editor);
   await page.keyboard.type(" Alteração local.");
-  await expect(page.getByText(/O documento mudou desde o envio/)).toBeVisible();
+  await expect(page.getByText("O documento mudou desde a preparação da proposta.", { exact: true })).toBeVisible();
 
   await expectNoSeriousAccessibilityViolations(page);
 });
@@ -90,15 +90,16 @@ async function openAssistant(page: Page) {
   await page.getByRole("button", { name: "Abrir assistente de IA" }).click();
 }
 
-async function submitRewrite(page: Page) {
+async function submitRewrite(page: Page, request: APIRequestContext) {
+  await configureScenario(request, { reply: "edit" });
   await page.goto(`/casos/${caseId}`);
 
   const editor = page.locator(".ProseMirror");
   await expect(editor).toHaveText("Trecho original.");
-  await editor.click();
-  await page.keyboard.press("Control+A");
   await page.getByRole("button", { name: "Abrir assistente de IA" }).click();
-  await page.getByRole("button", { name: "Reescrever", exact: true }).click();
+  const composer = page.getByLabel("O que você quer que a IA faça?");
+  await expect(composer).toBeEnabled();
+  await composer.fill("Reescreva o primeiro parágrafo preservando os fatos.");
   await page.getByRole("button", { name: "Enviar para IA" }).click();
   return editor;
 }

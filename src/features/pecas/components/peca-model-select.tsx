@@ -32,10 +32,10 @@ export function PecaModelSelect({ templateId, disabled, onChange, actions }: Pro
   useEffect(() => { load(); return () => request.current?.abort(); }, [load]);
   const missing = templateId && !models.some(model => model.id === templateId);
 
-  return <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2 text-xs">
+  return <div className="flex flex-wrap items-center gap-2 border-b border-border bg-card px-3 py-1.5 text-xs">
     <label className="flex items-center gap-2">
       <span className="text-muted-foreground">Modelo</span>
-      <select aria-label="Modelo da peça" className="h-8 max-w-64 rounded-md border bg-background px-2 text-xs"
+      <select aria-label="Modelo da peça" className="h-7 max-w-64 rounded-md border border-border bg-popover px-2 text-xs text-foreground"
         value={templateId ?? ""} disabled={disabled || loading || Boolean(error)} onFocus={load}
         onChange={event => {
           const model = models.find(item => item.id === event.target.value);

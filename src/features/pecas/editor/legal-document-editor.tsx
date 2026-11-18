@@ -28,9 +28,9 @@ import { setReviewDecisionHandlers } from "@/features/ai-assistant/review/extens
 import { useReviewSession } from "@/features/ai-assistant/review/use-review-session";
 import { normalizeLegalDocument } from "./normalize-document";
 
-interface Props { peca: Peca; onChanged: (peca: Peca) => void; onReload: () => void; focusMode: boolean; onToggleFocusMode: () => void; onReviewLockChange?: (locked: boolean) => void }
+interface Props { peca: Peca; onChanged: (peca: Peca) => void; onReload: () => void; focusMode: boolean; onToggleFocusMode: () => void; onReviewLockChange?: (locked: boolean) => void; onAssistantOpenChange?: (open: boolean) => void }
 
-export function LegalDocumentEditor({ peca, onChanged, onReload, focusMode, onToggleFocusMode, onReviewLockChange }: Props) {
+export function LegalDocumentEditor({ peca, onChanged, onReload, focusMode, onToggleFocusMode, onReviewLockChange, onAssistantOpenChange }: Props) {
   const [stats, setStats] = useState({ words: 0, characters: 0 });
   const [editorTheme, setEditorTheme] = useState<EditorTheme>(getEditorTheme);
   const [zoom, setZoom] = useState<EditorZoom>(getEditorZoom);
@@ -40,11 +40,18 @@ export function LegalDocumentEditor({ peca, onChanged, onReload, focusMode, onTo
   const [editorRevision, setEditorRevision] = useState(0);
   const canvasRef = useRef<HTMLDivElement>(null);
   const capabilitiesControllerRef = useRef<AbortController | null>(null);
+  const wasAssistantOpenRef = useRef(false);
   const pecaRef = useRef(peca);
   useEffect(() => { pecaRef.current = peca; }, [peca]);
   const persisted = useCallback((version: number, updatedAt: string, patch: PecaPatch) => onChanged({ ...pecaRef.current, ...patch, versao: version, dataAtualizacao: updatedAt }), [onChanged]);
   const autosave = usePecaAutosave({ pecaId: peca.id, initialVersion: peca.versao, onPersisted: persisted });
   const assistantAvailable = assistantCapabilities?.habilitado === true;
+
+  useEffect(() => {
+    const active = assistantOpen && assistantAvailable;
+    if (active && !wasAssistantOpenRef.current) onAssistantOpenChange?.(true);
+    wasAssistantOpenRef.current = active;
+  }, [assistantAvailable, assistantOpen, onAssistantOpenChange]);
 
   const refreshAssistantCapabilities = useCallback(() => {
     capabilitiesControllerRef.current?.abort();
@@ -167,6 +174,8 @@ export function LegalDocumentEditor({ peca, onChanged, onReload, focusMode, onTo
     saveEditorZoom(nextZoom);
   }
 
+  const showReviewBar = (assistantCapabilities?.suportaRevisaoPersistida && (reviewing || review.saved.length > 0 || Boolean(review.error))) || review.busy || review.uncertain;
+
   return <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-card">
     <PecaModelSelect templateId={peca.templateId} disabled={review.busy || review.uncertain || autosave.state === "SALVANDO" || autosave.state === "CONFLITO"}
       actions={<PecaExportButton pecaId={peca.id} disabled={review.busy || review.uncertain || autosave.state === "CONFLITO"} prepareExport={autosave.prepareExport} />}
@@ -176,7 +185,7 @@ export function LegalDocumentEditor({ peca, onChanged, onReload, focusMode, onTo
         void autosave.flush();
       }} />
     <EditorToolbar editor={editor} theme={editorTheme} onToggleTheme={toggleEditorTheme} zoom={zoom} effectiveZoom={effectiveZoom} onZoomChange={changeZoom} focusMode={focusMode} onToggleFocusMode={onToggleFocusMode} assistantAvailable={assistantAvailable} assistantOpen={assistantOpen} onToggleAssistant={() => setAssistantOpen((current) => !current)} />
-    {assistantCapabilities?.suportaRevisaoPersistida || review.busy || review.uncertain ? <div className="space-y-2 border-b p-3">
+    {showReviewBar ? <div className="space-y-2 border-b border-border bg-card px-3 py-2">
       <AssistantReviewToolbar editor={editor} onApprove={(ids) => { void review.approve(ids); }} onReject={(ids) => { void review.reject(ids); }} />
       {review.busy ? <p role="status" className="text-xs text-muted-foreground">Registrando alterações...</p> : null}
       {review.error ? <div role="alert" className="flex items-center gap-2 text-xs text-warning"><span>{review.error}</span>
@@ -191,12 +200,12 @@ export function LegalDocumentEditor({ peca, onChanged, onReload, focusMode, onTo
     </div> : null}
     {autosave.state === "CONFLITO" && <div className="flex items-center justify-between border-b border-warning/40 bg-warning/10 px-4 py-2 text-xs text-warning"><span>Esta peça foi alterada em outra sessão. Recarregue para evitar sobrescrever a versão mais recente.</span><Button size="sm" variant="outline" onClick={onReload}><RefreshCw />Recarregar versão mais recente</Button></div>}
     <div className="relative flex min-h-0 flex-1">
-      <div ref={canvasRef} data-review-scroll-container className={cn("min-h-0 min-w-0 flex-1 overflow-auto px-4 py-5 transition-colors sm:px-6 sm:py-6 2xl:px-8 2xl:py-7", editorTheme === "light" ? "bg-[#cfd4da]" : "bg-[#0a1118]")}>
+      <div ref={canvasRef} data-review-scroll-container className={cn("min-h-0 min-w-0 flex-1 overflow-auto px-4 py-5 transition-colors sm:px-6 sm:py-6 2xl:px-8 2xl:py-7", editorTheme === "light" ? "bg-[#EFECE6] dark:bg-[#111417]" : "bg-[#111417]")}>
         <div
           data-editor-theme={editorTheme}
           className={cn(
-            "legal-editor-page relative mx-auto flex flex-col border shadow-xl transition-colors",
-            editorTheme === "light" ? "border-[#b7bec6] bg-white text-[#20242a]" : "border-[#33404d] bg-[#131d26] text-[#dce4eb]",
+            "legal-editor-page relative mx-auto flex flex-col border transition-colors",
+            editorTheme === "light" ? "border-[#DFDBD2] bg-white text-[#1F242A] shadow-sm" : "border-[#2B323B] bg-[#1B2025] text-[#E2E0DA] shadow-md",
           )}
           style={{ ...pageStyle, zoom: effectiveZoom }}
         >
@@ -224,10 +233,10 @@ export function LegalDocumentEditor({ peca, onChanged, onReload, focusMode, onTo
         currentProposal={review.proposal}
       /> : null}
     </div>
-    <footer className="flex h-9 items-center border-t bg-card px-3 text-xs text-muted-foreground">
-      <span>Palavras: {stats.words.toLocaleString("pt-BR")}</span><span className="mx-3">Caracteres: {stats.characters.toLocaleString("pt-BR")}</span><span>{reviewing ? "Paginação de revisão" : `${pageCount} ${pageCount === 1 ? "página" : "páginas"}`}</span>
-      <span className="ml-auto flex items-center gap-1.5">{status}</span>
-      {(autosave.state === "ERRO" || autosave.state === "NAO_SALVO") && <Button size="sm" variant="ghost" className="ml-2 h-7" onClick={() => void autosave.retry()}><Save />Salvar</Button>}
+    <footer className="flex h-7 items-center border-t border-border bg-card px-3 text-[11px] text-muted-foreground">
+      <span>Palavras: {stats.words.toLocaleString("pt-BR")}</span><span className="mx-2.5">Caracteres: {stats.characters.toLocaleString("pt-BR")}</span><span>{reviewing ? "Paginação de revisão" : `${pageCount} ${pageCount === 1 ? "página" : "páginas"}`}</span>
+      <span className="ml-auto flex items-center gap-1.5 [&_svg]:size-3">{status}</span>
+      {(autosave.state === "ERRO" || autosave.state === "NAO_SALVO") && <Button size="xs" variant="ghost" className="ml-2 h-5 px-1.5 text-[11px]" onClick={() => void autosave.retry()}><Save />Salvar</Button>}
     </footer>
   </section>;
 }

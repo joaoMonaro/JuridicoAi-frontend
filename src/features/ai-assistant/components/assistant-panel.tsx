@@ -403,8 +403,8 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
   const transparencyPending = Boolean(capabilities.habilitado && transparency && !transparency.confirmado);
 
   const panelClassName = expanded
-    ? "fixed inset-y-4 right-4 z-40 flex w-[min(720px,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border bg-card shadow-2xl"
-    : `absolute inset-y-0 right-0 z-30 flex w-full max-w-[480px] shrink-0 flex-col border-l bg-card shadow-2xl xl:static xl:z-auto ${wide ? "xl:w-[520px]" : "xl:w-[440px]"} xl:shadow-none`;
+    ? "fixed inset-y-4 right-4 z-40 flex w-[min(720px,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl"
+    : `absolute inset-y-0 right-0 z-30 flex w-full max-w-[480px] shrink-0 flex-col border-l border-border bg-card shadow-xl xl:static xl:z-auto ${wide ? "xl:w-[500px]" : "xl:w-[380px]"} xl:shadow-none`;
 
   return <>
   <aside
@@ -413,9 +413,9 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
     aria-hidden={transparencyPending || undefined}
     inert={transparencyPending || undefined}
   >
-    <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
-      <span className="grid size-7 place-items-center rounded-md bg-primary/15 text-primary"><Sparkles className="size-4" aria-hidden="true" /></span>
-      <div className="min-w-0 flex-1"><h2 className="text-sm font-semibold">Assistente</h2><p className="truncate text-[10px] text-muted-foreground">Converse sobre esta Peça; você decide o que aplicar</p></div>
+    <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-3">
+      <span className="grid size-6 place-items-center rounded-md bg-accent text-accent-foreground"><Sparkles className="size-3.5" aria-hidden="true" /></span>
+      <div className="min-w-0 flex-1"><h2 className="text-xs font-semibold">Assistente</h2><p className="truncate text-[10px] text-muted-foreground">Converse sobre esta Peça; você decide o que aplicar</p></div>
       {!expanded ? <Button type="button" size="icon-sm" variant="ghost" onClick={() => setWide((current) => !current)} aria-label={wide ? "Reduzir largura do assistente" : "Aumentar largura do assistente"} aria-pressed={wide}><MoveHorizontal /></Button> : null}
       <Button type="button" size="icon-sm" variant="ghost" onClick={() => setExpanded((current) => !current)} aria-label={expanded ? "Restaurar assistente" : "Expandir assistente"} aria-expanded={expanded}>{expanded ? <Minimize2 /> : <Maximize2 />}</Button>
       <Button type="button" size="icon-sm" variant="ghost" onClick={close} aria-label="Fechar assistente"><X /></Button>
@@ -462,7 +462,7 @@ export function AssistantPanel({ open, capabilities, editor, peca, editorRevisio
       {capabilities.documentos && free ? <AssistantDocuments documents={documents} limits={capabilities.documentos} disabled={busy || blocked || historyBlocked} /> : null}
       {composerError ? <div className="mb-2"><ErrorBox message={composerError} /></div> : null}
       <label className="sr-only" htmlFor="assistant-composer">O que você quer que a IA faça?</label>
-      <div className="rounded-lg border bg-background shadow-sm focus-within:ring-2 focus-within:ring-ring/40">
+      <div className="rounded-lg border border-input bg-popover shadow-2xs focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/25">
         <Textarea
           id="assistant-composer"
           ref={instructionRef}
@@ -542,7 +542,7 @@ function ConversationTurnView({ turn, conversationId, onRefreshHistory, editor, 
       </details>
     </div>
 
-    <div className="max-w-[96%] rounded-2xl rounded-bl-sm border bg-background px-3 py-3 shadow-sm">
+    <div className="max-w-[96%] rounded-xl rounded-bl-xs border border-border bg-popover px-3.5 py-3 shadow-2xs">
       {turn.status === "sending" || turn.status === "streaming" ? <>
         <div className="flex items-center gap-2 text-xs font-medium" aria-busy="true"><LoaderCircle className="size-4 animate-spin text-primary" />{turn.status === "sending" ? "Preparando contexto..." : "A IA está elaborando a resposta..."}</div>
         {turn.streamedText ? <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{turn.streamedText}</p> : null}

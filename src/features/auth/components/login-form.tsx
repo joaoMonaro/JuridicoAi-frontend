@@ -70,9 +70,9 @@ export function LoginForm() {
   const passwordError = touched.senha ? errors.senha : undefined;
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="space-y-5">
-      <div className="space-y-2">
-        <label htmlFor="login-email" className="text-sm font-medium">E-mail</label>
+    <form onSubmit={handleSubmit} noValidate className="space-y-4">
+      <div className="space-y-1.5">
+        <label htmlFor="login-email" className="text-xs font-medium text-foreground">E-mail</label>
         <div className="relative">
           <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
           <Input
@@ -83,7 +83,7 @@ export function LoginForm() {
             autoComplete="email"
             autoFocus
             placeholder="voce@escritorio.com.br"
-            className="h-11 pl-10"
+            className="h-10 bg-card pl-10"
             value={values.email}
             onChange={(event) => {
               setValues((current) => ({ ...current, email: event.target.value }));
@@ -97,8 +97,8 @@ export function LoginForm() {
         {emailError && <p id="login-email-error" role="alert" className="text-xs text-destructive">{emailError}</p>}
       </div>
 
-      <div className="space-y-2">
-        <label htmlFor="login-password" className="text-sm font-medium">Senha</label>
+      <div className="space-y-1.5">
+        <label htmlFor="login-password" className="text-xs font-medium text-foreground">Senha</label>
         <div className="relative">
           <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
           <Input
@@ -107,7 +107,7 @@ export function LoginForm() {
             type={showPassword ? "text" : "password"}
             autoComplete="current-password"
             placeholder="Digite sua senha"
-            className="h-11 px-10"
+            className="h-10 bg-card px-10"
             value={values.senha}
             onChange={(event) => {
               setValues((current) => ({ ...current, senha: event.target.value }));
@@ -137,7 +137,7 @@ export function LoginForm() {
         </div>
       )}
 
-      <Button type="submit" size="lg" className="h-11 w-full" disabled={submitting}>
+      <Button type="submit" size="lg" className="h-10 w-full" disabled={submitting}>
         {submitting && <LoaderCircle className="animate-spin" aria-hidden="true" />}
         {submitting ? "Entrando..." : "Entrar"}
       </Button>

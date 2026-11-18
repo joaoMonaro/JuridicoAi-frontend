@@ -1,8 +1,10 @@
+import { useState } from "react";
 import type { ReactNode } from "react";
 
 import { AppSidebar } from "@/components/shared/app-sidebar";
 import type { AppSidebarSection } from "@/components/shared/app-sidebar";
 import { AppTopbar } from "@/components/shared/app-topbar";
+import { TemplateManager } from "@/features/templates/components/template-manager";
 
 type AppLayoutProps = {
   children: ReactNode;
@@ -10,13 +12,16 @@ type AppLayoutProps = {
 };
 
 export function AppLayout({ children, sidebarActive = "pecas" }: AppLayoutProps) {
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+
   return (
     <div className="flex h-svh min-h-0 min-w-0 flex-col overflow-hidden bg-background text-foreground">
       <AppTopbar />
       <div className="flex min-h-0 flex-1">
-        <AppSidebar active={sidebarActive} />
+        <AppSidebar active={sidebarActive} onTemplates={() => setTemplatesOpen(true)} />
         <main className="min-w-0 flex-1 overflow-y-auto">{children}</main>
       </div>
+      <TemplateManager open={templatesOpen} onClose={() => setTemplatesOpen(false)} />
     </div>
   );
 }
