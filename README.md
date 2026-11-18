@@ -1,4 +1,90 @@
-# React + TypeScript + Vite
+# JuridicoAI — frontend
+
+## Versionamento
+
+`main` recebe versões aprovadas para produção; `homologacao` integra o trabalho
+para validação. Novas tarefas seguem `feature/* → homologacao → main`.
+Veja o [fluxo de versionamento e promoção](docs/versionamento.md).
+
+## Estado atual do assistente
+
+[Andamento, integrações e limites atuais](docs/assistant-implementation-status.md).
+Os documentos abaixo registram etapas da evolução; não são checklists atuais
+independentes. Geração durável por seções e histórico pessoal já estão integrados,
+com ativação pelas capacidades do backend. A entrega ainda exige homologação e
+preparação operacional; OCR permanece em espera.
+
+## Revisão visual da Peça — E0
+
+A primeira etapa da comparação pode ser testada em `/dev/revisao-peca`, com
+`npm run dev`. Usa documento e propostas fictícios, sem chamadas à IA/API ou
+salvamento no servidor. Permite aprovar/rejeitar alterações no documento e testar
+desfazer/refazer. Disponível somente em desenvolvimento.
+
+Veja [instruções e limites desta etapa](docs/assistant-review-e0.md).
+
+## Revisão persistida no editor real
+
+O editor também consome a revisão persistida quando a API anuncia
+`suportaRevisaoPersistida`. Sugestões são salvas e revisadas antes da aprovação;
+o servidor aplica e retorna um recibo sem PATCH duplicado do autosave.
+Veja [ativação, fluxo e limites](docs/assistant-review-persistent.md).
+
+O chat também recupera mensagens e respostas quando a API anuncia
+`suportaHistorico`, usando esse histórico como contexto no backend.
+Veja [a etapa de conversa persistida](docs/assistant-conversation-history.md).
+
+Com `suportaConversaLivre`, o painel recebe pedidos naturais, prepara propostas
+diretamente na comparação e permite ajustar pendências pelo chat. A Peça só muda
+após a aprovação. Veja [conversa livre, ativação e limites](docs/assistant-free-chat.md).
+
+A etapa de [documentos no chat](docs/assistant-documents.md) integra anexos privados,
+fontes do Caso, leitura nativa e progresso. OCR permanece separado e desativado
+até concluir a calibração.
+
+A [consulta documental por etapas](docs/assistant-document-retrieval.md) permite
+buscar e ler trechos de arquivos extensos, com cobertura persistida por resposta.
+A [memória de conversas extensas](docs/assistant-history-memory.md) indica uso de
+resumo e mensagens recentes, preservando o histórico completo e a aprovação visual.
+A [análise documental durável](docs/assistant-durable-document-analysis.md) acompanha
+lotes em segundo plano e recupera o resultado após reabrir, sem reenviar o pedido.
+A [geração durável](docs/assistant-durable-generation.md) acompanha minutas por
+seções, cancelamento/retomada e proposta completa. O
+[histórico pessoal](docs/assistant-personal-history.md) permite ler/excluir o
+próprio chat após perda de vínculo, com sessão separada.
+
+## Testes automatizados
+
+Os testes unitários e de componentes usam Vitest, jsdom e React Testing
+Library. O fluxo de navegador usa Playwright com uma API fake local e não faz
+chamadas à OpenAI.
+
+```bash
+# preparação da máquina para os E2E
+npx playwright install chromium
+
+# modo interativo durante o desenvolvimento
+npm test
+
+# unitários e componentes
+npm run test:run
+
+# somente E2E
+npm run test:e2e
+
+# acessibilidade automatizada
+npm run test:a11y
+
+# suíte completa não interativa: Vitest e Playwright
+npm run test:ci
+```
+
+O arquivo `src/test/setup.ts` concentra os matchers de DOM e a limpeza após
+cada teste. Novos testes devem consultar elementos por papel, nome acessível ou
+rótulo sempre que existir uma semântica adequada. A suíte de acessibilidade usa
+axe-core no Chromium e reprova violações críticas ou sérias. Falhas E2E
+preservam trace, screenshot e vídeo em `test-results/`, diretório ignorado pelo
+Git.
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 

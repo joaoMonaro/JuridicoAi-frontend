@@ -14,44 +14,66 @@ export function usePecaAutosave({ pecaId, initialVersion, onPersisted }: Options
   const revision = useRef(0);
   const persistedRevision = useRef(0);
   const pending = useRef<PecaPatch>({});
-  const inFlight = useRef(false);
+  const inFlight = useRef<Promise<void> | null>(null);
+  const saveError = useRef<unknown>(null);
   const conflict = useRef(false);
   const timer = useRef<number | undefined>(undefined);
+  const mounted = useRef(true);
+  const externalCommit = useRef(false);
 
-  useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; clearTimeout(timer.current); };
+  }, []);
 
   function schedule() {
     clearTimeout(timer.current);
     timer.current = window.setTimeout(() => void save(), 3000);
   }
 
-  async function save() {
+  function save(): Promise<void> {
     clearTimeout(timer.current);
-    if (inFlight.current || conflict.current || revision.current === persistedRevision.current) return;
+    if (inFlight.current) return inFlight.current;
+    if (conflict.current || !mounted.current || revision.current === persistedRevision.current) return Promise.resolve();
     const sendingRevision = revision.current;
     const patch = pending.current;
     pending.current = {};
-    inFlight.current = true;
+    saveError.current = null;
     setState("SALVANDO");
-    try {
+    const operation = (async () => { try {
       const result = await atualizarPeca(pecaId, version.current, patch);
+      if (!mounted.current) return;
       version.current = Math.max(version.current, result.versao);
       persistedRevision.current = sendingRevision;
       setLastSavedAt(result.dataAtualizacao);
-      onPersisted(result.versao, result.dataAtualizacao, patch);
+      onPersisted(result.versao, result.dataAtualizacao, { ...patch, ...result.apresentacao });
       if (revision.current > sendingRevision) { setState("NAO_SALVO"); schedule(); }
       else setState("SALVO");
     } catch (error) {
+      if (!mounted.current) return;
+      saveError.current = error;
       pending.current = { ...patch, ...pending.current };
       if (error instanceof ApiError && error.status === 409) { conflict.current = true; setState("CONFLITO"); }
       else setState("ERRO");
-    } finally {
-      inFlight.current = false;
-    }
+    } })();
+    inFlight.current = operation.finally(() => { inFlight.current = null; });
+    return inFlight.current;
+  }
+
+  async function ensurePersisted(): Promise<number> {
+    do {
+      if (!mounted.current) throw new Error("O editor foi fechado antes de concluir o salvamento.");
+      if (conflict.current) throw new Error("Recarregue a peça para resolver o conflito antes de continuar.");
+      await save();
+      if (saveError.current) throw new Error("Não foi possível salvar a peça. Tente salvar novamente antes de continuar.");
+    } while (revision.current !== persistedRevision.current);
+    clearTimeout(timer.current);
+    if (!mounted.current) throw new Error("O editor foi fechado antes de concluir o salvamento.");
+    return version.current;
   }
 
   function change(patch: PecaPatch) {
-    if (conflict.current) return;
+    if (conflict.current || externalCommit.current) return;
     pending.current = { ...pending.current, ...patch };
     revision.current += 1;
     setState("NAO_SALVO");
@@ -65,5 +87,23 @@ export function usePecaAutosave({ pecaId, initialVersion, onPersisted }: Options
     contentChanged: (json: JSONContent) => change({ conteudoJson: json }),
     flush: save,
     retry: save,
+    prepareExport: ensurePersisted,
+    ensurePersisted,
+    beginExternalCommit: () => {
+      if (externalCommit.current) throw new Error("Já existe uma aplicação em andamento.");
+      externalCommit.current = true;
+      clearTimeout(timer.current);
+    },
+    endExternalCommit: () => { externalCommit.current = false; },
+    adoptExternalCommit: (nextVersion: number, updatedAt: string, content: JSONContent) => {
+      if (!mounted.current || !externalCommit.current || inFlight.current || revision.current !== persistedRevision.current || nextVersion !== version.current + 1)
+        throw new Error("Não foi possível reconciliar a versão aplicada. Recarregue a Peça.");
+      version.current = nextVersion;
+      pending.current = {};
+      saveError.current = null;
+      setLastSavedAt(updatedAt);
+      setState("SALVO");
+      onPersisted(nextVersion, updatedAt, { conteudoJson: content });
+    },
   };
 }

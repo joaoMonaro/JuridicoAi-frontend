@@ -1,5 +1,6 @@
 import { FileCheck2, Scale, ShieldCheck, Sparkles } from "lucide-react";
 
+import { AppLink } from "@/components/shared/app-link";
 import { LoginForm } from "@/features/auth/components/login-form";
 
 export function LoginPage() {
@@ -71,6 +72,7 @@ export function LoginPage() {
               <p className="mt-2 text-sm leading-6 text-muted-foreground">Entre com sua conta para acessar o ambiente jurídico.</p>
             </header>
             <LoginForm />
+            <AppLink href="/historico-assistente" className="mt-5 block text-center text-sm text-primary underline underline-offset-4">Acessar meu histórico de conversas</AppLink>
           </div>
         </div>
       </section>

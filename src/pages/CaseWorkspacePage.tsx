@@ -32,6 +32,7 @@ export function CaseWorkspacePage({ caseId, section = "pecas" }: Props) {
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [explorerOpen, setExplorerOpen] = useState(() => window.innerWidth >= 1120);
   const [focusMode, setFocusMode] = useState(false);
+  const [reviewLocked, setReviewLocked] = useState(false);
 
   const mergePeca = useCallback((updated: Peca) => {
     setPeca(updated);
@@ -79,7 +80,7 @@ export function CaseWorkspacePage({ caseId, section = "pecas" }: Props) {
   }, [selectedId]);
 
   function patchMetadata(patch: { titulo?: string; status?: PecaStatusEnum }) {
-    if (!peca) return;
+    if (!peca || reviewLocked) return;
     mergePeca({ ...peca, ...patch });
     window.dispatchEvent(new CustomEvent("peca:patch", { detail: patch }));
   }
@@ -90,6 +91,7 @@ export function CaseWorkspacePage({ caseId, section = "pecas" }: Props) {
   }
 
   async function remove(item: PecaResumo) {
+    if (reviewLocked && item.id === selectedId) return;
     if (!window.confirm(`Excluir a peça “${item.titulo}”? Esta ação não poderá ser desfeita pela interface.`)) return;
     try { await excluirPeca(item.id, item.versao); const remaining = items.filter((x) => x.id !== item.id); setItems(remaining); if (selectedId === item.id) setSelectedId(remaining[0]?.id ?? null); }
     catch (e) { setListError(e instanceof Error ? e.message : "Não foi possível excluir a peça."); }
@@ -117,15 +119,15 @@ export function CaseWorkspacePage({ caseId, section = "pecas" }: Props) {
             {!explorerOpen ? <Button size="icon-sm" variant="ghost" onClick={() => setExplorerOpen(true)} aria-label="Exibir explorador" title="Exibir explorador"><PanelLeftOpen /></Button> : null}
             {peca ? <>
               <span className="min-w-0 truncate font-medium" title={peca.titulo}>{peca.titulo}</span>
-              <Button size="icon-sm" variant="ghost" onClick={() => void rename()} aria-label="Renomear peça" title="Renomear peça"><Pencil /></Button>
+              <Button size="icon-sm" variant="ghost" disabled={reviewLocked} onClick={() => void rename()} aria-label="Renomear peça" title="Renomear peça"><Pencil /></Button>
               <span className="ml-auto hidden shrink-0 text-muted-foreground xl:inline">Versão {peca.versao}</span>
-              <select aria-label="Status da peça" className="h-7 shrink-0 rounded-md border bg-background px-2 text-xs" value={peca.status} onChange={(e) => patchMetadata({ status: e.target.value as PecaStatusEnum })}><option value="Rascunho">Rascunho</option><option value="Finalizada">Finalizada</option></select>
-              <Button size="icon-sm" variant="ghost" onClick={() => void remove(peca)} aria-label="Excluir peça" title="Excluir peça"><Trash2 /></Button>
+              <select aria-label="Status da peça" disabled={reviewLocked} className="h-7 shrink-0 rounded-md border bg-background px-2 text-xs" value={peca.status} onChange={(e) => patchMetadata({ status: e.target.value as PecaStatusEnum })}><option value="Rascunho">Rascunho</option><option value="Finalizada">Finalizada</option></select>
+              <Button size="icon-sm" variant="ghost" disabled={reviewLocked} onClick={() => void remove(peca)} aria-label="Excluir peça" title="Excluir peça"><Trash2 /></Button>
             </> : <span className="text-muted-foreground">Peças</span>}
           </header> : null}
           {loadingDocument && <div className="grid flex-1 place-items-center text-sm text-muted-foreground"><span className="flex items-center gap-2"><LoaderCircle className="animate-spin" />Carregando documento...</span></div>}
           {!loadingDocument && documentError && <div className="grid flex-1 place-items-center"><div className="text-center"><CircleAlert className="mx-auto mb-3 text-destructive" /><p className="text-sm text-destructive">{documentError}</p><Button variant="outline" size="sm" className="mt-4" onClick={() => void reload()}><RefreshCw />Tentar novamente</Button></div></div>}
-          {!loadingDocument && !documentError && peca && <LegalDocumentEditor key={peca.id} peca={peca} onChanged={mergePeca} onReload={() => void reload()} focusMode={focusMode} onToggleFocusMode={() => setFocusMode((current) => !current)} />}
+          {!loadingDocument && !documentError && peca && <LegalDocumentEditor key={peca.id} peca={peca} onChanged={mergePeca} onReload={() => void reload()} focusMode={focusMode} onToggleFocusMode={() => setFocusMode((current) => !current)} onReviewLockChange={setReviewLocked} />}
           {!loadingDocument && !documentError && !peca && <div className="grid flex-1 place-items-center"><div className="text-center"><FileText className="mx-auto mb-3 size-9 text-muted-foreground" /><h2 className="text-sm font-medium">Nenhuma peça aberta</h2><p className="mt-1 text-xs text-muted-foreground">Selecione uma peça no explorador ou crie um novo documento.</p><Button size="sm" className="mt-4" onClick={() => setCreateOpen(true)}>Nova Peça</Button></div></div>}
         </div>
       </main>
