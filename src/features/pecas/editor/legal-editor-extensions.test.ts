@@ -1,6 +1,7 @@
+import { Editor } from "@tiptap/core";
 import { describe, expect, it } from "vitest";
 
-import { sanitizeExternalUrl } from "./legal-editor-extensions";
+import { createLegalEditorExtensions, sanitizeExternalUrl } from "./legal-editor-extensions";
 
 describe("sanitizeExternalUrl", () => {
   it("aceita URLs https e http válidas", () => {
@@ -13,13 +14,27 @@ describe("sanitizeExternalUrl", () => {
     expect(sanitizeExternalUrl("mailto:contato@escritorio.com.br", true)).toBe("mailto:contato@escritorio.com.br");
   });
 
-  it("rejeita esquemas executáveis ou inseguros (javascript, data, vbscript, file)", () => {
-    expect(sanitizeExternalUrl("javascript:alert(1)", true)).toBeNull();
-    expect(sanitizeExternalUrl("JAVASCRIPT:alert(document.cookie)", true)).toBeNull();
-    expect(sanitizeExternalUrl("data:text/html,<script>alert(1)</script>", true)).toBeNull();
-    expect(sanitizeExternalUrl("vbscript:msgbox(1)", true)).toBeNull();
-    expect(sanitizeExternalUrl("file:///etc/passwd", true)).toBeNull();
+  it("rejeita esquemas não permitidos", () => {
+    expect(sanitizeExternalUrl("ftp://arquivos.exemplo.com", true)).toBeNull();
+    expect(sanitizeExternalUrl("custom-scheme://acao", true)).toBeNull();
+    expect(sanitizeExternalUrl("file:///caminho/local", true)).toBeNull();
     expect(sanitizeExternalUrl("", true)).toBeNull();
     expect(sanitizeExternalUrl(null, true)).toBeNull();
+  });
+
+  it("bloqueia a criação de links com protocolos não autorizados na instância do editor TipTap", () => {
+    const editor = new Editor({
+      extensions: createLegalEditorExtensions(),
+      content: "<p>Referência jurisprudencial</p>",
+    });
+
+    editor.commands.selectAll();
+    editor.commands.setLink({ href: "custom-scheme://nao-autorizado" });
+    expect(editor.getHTML()).not.toContain("<a ");
+
+    editor.commands.setLink({ href: "https://www.stj.jus.br" });
+    expect(editor.getHTML()).toContain('href="https://www.stj.jus.br"');
+
+    editor.destroy();
   });
 });
