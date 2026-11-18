@@ -114,27 +114,27 @@ export function CaseDataPanel({ casoId, casoTitulo }: Props) {
 
   return (
     <section className="min-h-0 flex-1 overflow-y-auto bg-background">
-      <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-6 sm:py-6 xl:px-8 xl:py-7">
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="mx-auto w-full max-w-5xl px-4 py-5 sm:px-6 sm:py-6 xl:px-8">
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0">
-            <p className="text-xs font-medium text-primary">Base de contexto</p>
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight">Dados do caso</h1>
-            <p className="mt-1.5 max-w-2xl text-sm leading-6 text-muted-foreground">Organize relatos, fatos, cronologias e estratégias relacionados a <span className="font-medium text-foreground">{casoTitulo}</span>.</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-primary">Base de contexto</p>
+            <h1 className="mt-1 text-xl font-semibold tracking-tight">Dados do caso</h1>
+            <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground sm:text-sm">Organize relatos, fatos, cronologias e estratégias relacionados a <span className="font-medium text-foreground">{casoTitulo}</span>.</p>
           </div>
-          <Button type="button" className="self-start" onClick={() => setDialog({ mode: "create" })}>
+          <Button type="button" size="sm" className="h-8 self-start px-3" onClick={() => setDialog({ mode: "create" })}>
             <FilePlus2 data-icon="inline-start" />Novo contexto
           </Button>
         </header>
 
-        <div className="mt-6 flex flex-col gap-3 rounded-lg border bg-card p-4 shadow-sm sm:flex-row sm:items-center">
+        <div className="mt-4 flex flex-col gap-3 rounded-lg border border-border bg-card p-3 sm:flex-row sm:items-center">
           <div className="relative w-full sm:max-w-sm">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input value={search} onChange={(event) => setSearch(event.target.value)} className="pl-9" placeholder="Buscar nos contextos..." aria-label="Buscar contextos" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            <Input value={search} onChange={(event) => setSearch(event.target.value)} className="h-8 bg-popover pl-8.5 text-xs" placeholder="Buscar nos contextos..." aria-label="Buscar contextos" />
           </div>
           <select
             value={typeFilter}
             onChange={(event) => setTypeFilter(event.target.value as TypeFilter)}
-            className="h-8 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+            className="h-8 rounded-md border border-border bg-popover px-2.5 text-xs text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
             aria-label="Filtrar contextos por tipo"
           >
             <option value="Todos">Todos os tipos</option>
@@ -150,24 +150,24 @@ export function CaseDataPanel({ casoId, casoTitulo }: Props) {
         {!loading && error ? <div className="grid min-h-72 place-items-center text-center"><div><CircleAlert className="mx-auto size-8 text-destructive" aria-hidden="true" /><h2 className="mt-4 text-sm font-medium">Não foi possível carregar os dados</h2><p className="mt-1 max-w-sm text-xs leading-5 text-muted-foreground">{error}</p><Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => setRequestVersion((current) => current + 1)}><RefreshCw />Tentar novamente</Button></div></div> : null}
 
         {!loading && !error && filtered.length > 0 ? (
-          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          <div className="mt-3.5 grid gap-3.5 lg:grid-cols-2">
             {filtered.map((item) => {
               const editing = loadingItemId === item.id;
               const deleting = deletingId === item.id;
-              return <article key={item.id} className="group flex min-h-52 flex-col rounded-lg border bg-card p-5 shadow-sm transition-colors hover:border-primary/35">
+              return <article key={item.id} className="group flex min-h-44 flex-col rounded-lg border border-border bg-popover p-4 transition-colors hover:border-primary/40">
                 <div className="flex items-start gap-3">
-                  <div className="grid size-9 shrink-0 place-items-center rounded-md border bg-primary/10 text-primary"><BookOpenText className="size-4" aria-hidden="true" /></div>
+                  <div className="grid size-8 shrink-0 place-items-center rounded-md border border-border bg-card text-primary"><BookOpenText className="size-4" aria-hidden="true" /></div>
                   <div className="min-w-0 flex-1">
-                    <span className="inline-flex rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">{CONTEXTO_TIPO_LABELS[item.tipo]}</span>
-                    <h2 className="mt-2 truncate text-sm font-semibold" title={item.titulo || CONTEXTO_TIPO_LABELS[item.tipo]}>{item.titulo || CONTEXTO_TIPO_LABELS[item.tipo]}</h2>
+                    <span className="inline-flex rounded border border-primary/20 bg-accent px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-accent-foreground">{CONTEXTO_TIPO_LABELS[item.tipo]}</span>
+                    <h2 className="mt-1.5 truncate text-sm font-semibold text-foreground" title={item.titulo || CONTEXTO_TIPO_LABELS[item.tipo]}>{item.titulo || CONTEXTO_TIPO_LABELS[item.tipo]}</h2>
                   </div>
                   <div className="flex shrink-0 items-center">
                     <Button type="button" size="icon-sm" variant="ghost" onClick={() => void edit(item)} disabled={Boolean(loadingItemId) || deleting} aria-label={`Editar ${item.titulo || CONTEXTO_TIPO_LABELS[item.tipo]}`} title="Editar contexto">{editing ? <LoaderCircle className="animate-spin" /> : <Pencil />}</Button>
                     <Button type="button" size="icon-sm" variant="ghost" className="hover:text-destructive" onClick={() => void remove(item)} disabled={Boolean(deletingId) || editing} aria-label={`Excluir ${item.titulo || CONTEXTO_TIPO_LABELS[item.tipo]}`} title="Excluir contexto">{deleting ? <LoaderCircle className="animate-spin" /> : <Trash2 />}</Button>
                   </div>
                 </div>
-                <p className="mt-4 line-clamp-4 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{item.conteudo}</p>
-                <p className="mt-auto pt-4 text-[11px] text-muted-foreground">Atualizado em {formatDate(item.dataAtualizacao)}</p>
+                <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-xs leading-5.5 text-muted-foreground sm:text-sm sm:leading-6">{item.conteudo}</p>
+                <p className="mt-auto border-t border-border pt-2.5 text-[11px] text-muted-foreground">Atualizado em {formatDate(item.dataAtualizacao)}</p>
               </article>;
             })}
           </div>

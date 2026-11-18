@@ -60,28 +60,28 @@ export function CaseList({ items, loading, error, onRetry, onCreate }: CaseListP
   const hasFilters = Boolean(search.trim()) || status !== "Todos";
 
   return (
-    <section className="overflow-hidden rounded-lg border bg-card shadow-sm" aria-label="Lista de casos">
-      <header className="flex flex-col items-stretch justify-between gap-3 border-b px-4 py-4 sm:flex-row sm:items-center sm:gap-5 sm:px-5">
+    <section className="overflow-hidden rounded-lg border border-border bg-popover" aria-label="Lista de casos">
+      <header className="flex flex-col items-stretch justify-between gap-3 border-b border-border bg-card px-4 py-3 sm:flex-row sm:items-center sm:gap-4 sm:px-5">
         <div className="relative w-full max-w-sm">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
           <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            className="pl-9"
+            className="h-8 bg-popover pl-8.5 text-xs"
             placeholder="Buscar por título ou descrição..."
             aria-label="Buscar casos"
           />
         </div>
 
-        <div className="flex shrink-0 items-center gap-1 self-start rounded-md border bg-background p-1" aria-label="Filtrar casos por status">
+        <div className="flex shrink-0 items-center gap-0.5 self-start rounded-md border border-border bg-secondary p-0.5" aria-label="Filtrar casos por status">
           {filters.map((filter) => (
             <button
               key={filter}
               type="button"
               onClick={() => setStatus(filter)}
               className={cn(
-                "h-7 rounded px-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                status === filter && "bg-muted text-foreground shadow-sm",
+                "h-6 rounded px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                status === filter && "bg-popover text-foreground shadow-2xs",
               )}
               aria-pressed={status === filter}
             >
@@ -91,7 +91,7 @@ export function CaseList({ items, loading, error, onRetry, onCreate }: CaseListP
         </div>
       </header>
 
-      <div className="grid grid-cols-[minmax(0,1fr)_7rem_1.5rem] gap-3 border-b bg-muted/25 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground sm:px-5 xl:grid-cols-[minmax(0,1fr)_9rem_10rem_1.5rem] xl:gap-5" aria-hidden="true">
+      <div className="grid grid-cols-[minmax(0,1fr)_7rem_1.5rem] gap-3 border-b border-border bg-card/60 px-4 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground sm:px-5 xl:grid-cols-[minmax(0,1fr)_9rem_10rem_1.5rem] xl:gap-5" aria-hidden="true">
         <span>Caso</span>
         <span>Status</span>
         <span className="hidden xl:block">Atualização</span>
@@ -114,28 +114,28 @@ export function CaseList({ items, loading, error, onRetry, onCreate }: CaseListP
       )}
 
       {!loading && !error && filtered.length > 0 && (
-        <div className="divide-y" role="list">
+        <div className="divide-y divide-border" role="list">
           {filtered.map((item) => (
             <AppLink
               key={item.id}
               href={`/casos/${item.id}`}
               role="listitem"
-              className="group grid grid-cols-[minmax(0,1fr)_7rem_1.5rem] items-center gap-3 px-4 py-4 transition-colors hover:bg-accent/60 focus-visible:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-5 xl:grid-cols-[minmax(0,1fr)_9rem_10rem_1.5rem] xl:gap-5"
+              className="group grid grid-cols-[minmax(0,1fr)_7rem_1.5rem] items-center gap-3 px-4 py-3.5 transition-colors hover:bg-accent/50 focus-visible:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-5 xl:grid-cols-[minmax(0,1fr)_9rem_10rem_1.5rem] xl:gap-5"
             >
               <div className="flex min-w-0 items-center gap-3">
-                <div className="grid size-9 shrink-0 place-items-center rounded-md border bg-background text-muted-foreground transition-colors group-hover:text-primary">
+                <div className="grid size-8.5 shrink-0 place-items-center rounded-md border border-border bg-card text-primary">
                   <BriefcaseBusiness className="size-4" aria-hidden="true" />
                 </div>
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{item.titulo}</p>
-                  <p className="mt-1 truncate text-xs text-muted-foreground">{item.descricao || "Sem descrição informada."}</p>
+                  <p className="truncate text-sm font-medium text-foreground">{item.titulo}</p>
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{item.descricao || "Sem descrição informada."}</p>
                 </div>
               </div>
               <span
                 className={cn(
-                  "w-fit rounded-full border px-2 py-1 text-[11px] font-medium",
+                  "w-fit rounded-full border px-2.5 py-0.5 text-[11px] font-medium",
                   item.status === "Ativo"
-                    ? "border-success/30 bg-success/10 text-success"
+                    ? "border-success/25 bg-success/10 text-success"
                     : "border-border bg-muted text-muted-foreground",
                 )}
               >
@@ -170,7 +170,7 @@ export function CaseList({ items, loading, error, onRetry, onCreate }: CaseListP
       )}
 
       {!loading && !error && items.length > 0 && (
-        <footer className="border-t px-5 py-3 text-xs text-muted-foreground">
+        <footer className="border-t border-border bg-card px-5 py-2.5 text-[11.5px] text-muted-foreground">
           {filtered.length} {filtered.length === 1 ? "caso exibido" : "casos exibidos"} de {items.length}
         </footer>
       )}
